@@ -1,8 +1,11 @@
 import { useState } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
 import type { FileTreeNode as FileTreeNodeType } from '../../types/vault.types'
 
 export function FileTreeNode({ node, depth }: { node: FileTreeNodeType; depth: number }) {
   const [expanded, setExpanded] = useState(false)
+  const navigate = useNavigate()
+  const { fileId } = useParams<{ fileId?: string }>()
 
   if (node.type === 'attachment') return null // not shown in the main tree, MP §5.3
 
@@ -24,12 +27,18 @@ export function FileTreeNode({ node, depth }: { node: FileTreeNodeType; depth: n
     )
   }
 
+  const isActive = node.id === fileId
+
   return (
     <button
       type="button"
       className="block w-full truncate rounded px-2 py-1 text-left text-sm hover:opacity-80"
-      style={{ paddingLeft: `${depth * 12 + 24}px`, color: 'var(--text-secondary)' }}
-      onClick={() => console.info('Note opening comes in the markdown rendering checkpoint:', node.id)}
+      style={{
+        paddingLeft: `${depth * 12 + 24}px`,
+        color: isActive ? 'var(--accent-link)' : 'var(--text-secondary)',
+        background: isActive ? 'var(--bg-tertiary)' : undefined,
+      }}
+      onClick={() => navigate(`/vault/note/${node.id}`)}
     >
       {node.name.replace(/\.md$/, '')}
     </button>

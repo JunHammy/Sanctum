@@ -1,7 +1,10 @@
 export const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID
 
+// Full Drive access, not the narrower drive.file: the app needs to see
+// files added to the vault folder from outside itself (Drive web UI, phone,
+// desktop sync), which drive.file's per-file-grant model can't support.
 export const OAUTH_SCOPES = [
-  'https://www.googleapis.com/auth/drive.file',
+  'https://www.googleapis.com/auth/drive',
   'https://www.googleapis.com/auth/userinfo.email',
   'https://www.googleapis.com/auth/userinfo.profile',
 ].join(' ')

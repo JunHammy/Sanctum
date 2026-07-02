@@ -15,5 +15,5 @@ export function useFileTree() {
     }
   }, [loadVault])
 
-  return { fileTree, isLoading, error }
+  return { fileTree, isLoading, error, refresh: loadVault }
 }

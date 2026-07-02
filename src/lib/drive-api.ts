@@ -67,3 +67,13 @@ export async function createFolder(token: string, name: string, parentId = 'root
     body: JSON.stringify({ name, mimeType: FOLDER_MIME, parents: [parentId] }),
   })
 }
+
+export async function readFile(token: string, fileId: string): Promise<string> {
+  const res = await fetch(`${DRIVE_API_BASE}/files/${fileId}?alt=media`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!res.ok) {
+    throw new DriveApiError(res.status, await res.text())
+  }
+  return res.text()
+}

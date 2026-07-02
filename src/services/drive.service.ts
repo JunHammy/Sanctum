@@ -26,6 +26,10 @@ export function listAllFiles(): Promise<DriveFile[]> {
   return withAuth((token) => driveApi.listAllFiles(token))
 }
 
+export function readFile(fileId: string): Promise<string> {
+  return withAuth((token) => driveApi.readFile(token, fileId))
+}
+
 // drive.file scope only sees files/folders this app created (or the user
 // picked via Google Picker), so on a first-ever sign-in this always creates
 // a fresh vault folder — it won't find one made outside the app.
