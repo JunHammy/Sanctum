@@ -59,6 +59,18 @@
   opacity: 0.85;
 }
 
+.markdown-body .math-error {
+  color: var(--error);
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 0.875em;
+}
+
+.markdown-body .katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.25em 0;
+}
+
 .markdown-body mark {
   background: var(--accent-highlight);
   color: var(--text-primary);

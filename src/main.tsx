@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import './styles/globals.css'
 import './styles/markdown.css'
 import 'highlight.js/styles/atom-one-dark.css'
+import 'katex/dist/katex.min.css'
 import App from './App.tsx'
 
 // Synchronous default to avoid a flash of unstyled content before React

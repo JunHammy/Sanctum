@@ -7,6 +7,7 @@ import { calloutPlugin } from '../lib/markdown-plugins/plugin-callout'
 import { tagPlugin } from '../lib/markdown-plugins/plugin-tag'
 import { wikilinkPlugin } from '../lib/markdown-plugins/plugin-wikilink'
 import { blockIdPlugin } from '../lib/markdown-plugins/plugin-block-id'
+import { renderMath } from '../lib/katex-setup'
 import hljs from 'highlight.js/lib/core'
 import bash from 'highlight.js/lib/languages/bash'
 import css from 'highlight.js/lib/languages/css'
@@ -107,9 +108,8 @@ export interface RenderedNote {
   frontmatter: Record<string, unknown>
 }
 
-// Math isn't wired in yet — everything else in Tier 1 is live.
 export function renderNote(raw: string): RenderedNote {
   const { content, data } = extractFrontmatter(raw)
-  const html = getRenderer().render(content)
+  const html = renderMath(getRenderer().render(content))
   return { html, frontmatter: data }
 }
