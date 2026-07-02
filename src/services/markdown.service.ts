@@ -5,6 +5,8 @@ import taskLists from 'markdown-it-task-lists'
 import { load as parseYaml } from 'js-yaml'
 import { calloutPlugin } from '../lib/markdown-plugins/plugin-callout'
 import { tagPlugin } from '../lib/markdown-plugins/plugin-tag'
+import { wikilinkPlugin } from '../lib/markdown-plugins/plugin-wikilink'
+import { blockIdPlugin } from '../lib/markdown-plugins/plugin-block-id'
 import hljs from 'highlight.js/lib/core'
 import bash from 'highlight.js/lib/languages/bash'
 import css from 'highlight.js/lib/languages/css'
@@ -33,6 +35,40 @@ function highlightCode(code: string, lang: string): string {
   return hljs.highlightAuto(code).value
 }
 
+// Exported so MarkdownReader can compute the same id when scrolling to a
+// [[Note#Heading]] target — must stay in sync with how ids get assigned below.
+export function slugify(text: string): string {
+  return text
+    .toLowerCase()
+    .trim()
+    .replace(/[^\w\s-]/g, '')
+    .replace(/\s+/g, '-')
+}
+
+// Headings don't get anchor ids by default in markdown-it — needed so
+// [[Note#Heading]] wikilinks have something to scroll to.
+function headingIdPlugin(md: MarkdownIt): void {
+  md.core.ruler.push('heading-id', (state) => {
+    const tokens = state.tokens
+    const seen = new Map<string, number>()
+
+    for (let i = 0; i < tokens.length; i++) {
+      if (tokens[i].type !== 'heading_open') continue
+      const inline = tokens[i + 1]
+      if (!inline || inline.type !== 'inline') continue
+
+      let slug = slugify(inline.content)
+      const count = seen.get(slug) ?? 0
+      seen.set(slug, count + 1)
+      if (count > 0) slug = `${slug}-${count}`
+
+      tokens[i].attrSet('id', slug)
+    }
+
+    return true
+  })
+}
+
 let renderer: MarkdownIt | null = null
 
 function getRenderer(): MarkdownIt {
@@ -48,7 +84,10 @@ function getRenderer(): MarkdownIt {
       .use(footnote) // [^1]
       .use(taskLists, { enabled: true }) // - [ ] checkboxes
       .use(calloutPlugin) // > [!TYPE] Title
+      .use(blockIdPlugin) // trailing ^block-id marker on a paragraph/list item
       .use(tagPlugin) // #tag
+      .use(wikilinkPlugin) // [[Note]], [[Note#Heading]], [[Note^block-id]], [[Note|Alias]]
+      .use(headingIdPlugin)
   }
   return renderer
 }
@@ -68,8 +107,7 @@ export interface RenderedNote {
   frontmatter: Record<string, unknown>
 }
 
-// Wikilinks and math aren't wired in yet — everything else in Tier 1
-// (including callouts and tags) is live.
+// Math isn't wired in yet — everything else in Tier 1 is live.
 export function renderNote(raw: string): RenderedNote {
   const { content, data } = extractFrontmatter(raw)
   const html = getRenderer().render(content)

@@ -7,5 +7,5 @@ export function NoteView({ fileId }: { fileId: string }) {
   if (isLoading) return <p style={{ color: 'var(--text-secondary)' }}>Loading note…</p>
   if (error) return <p style={{ color: 'var(--error)' }}>{error}</p>
 
-  return <MarkdownReader html={html} />
+  return <MarkdownReader html={html} currentFileId={fileId} />
 }

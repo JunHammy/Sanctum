@@ -1,7 +1,6 @@
 .markdown-body {
   line-height: 1.75;
   color: var(--text-primary);
-  max-width: 65ch;
 }
 
 .markdown-body h1,
@@ -26,12 +25,38 @@
   font-size: 1.25em;
 }
 
+.markdown-body .heading-flash {
+  animation: heading-flash 1.5s ease-out;
+  border-radius: 4px;
+}
+
+@keyframes heading-flash {
+  0% {
+    background: var(--accent-highlight);
+  }
+  100% {
+    background: transparent;
+  }
+}
+
 .markdown-body p {
   margin: 0.75em 0;
 }
 
 .markdown-body a {
   color: var(--accent-link);
+}
+
+.markdown-body .wikilink {
+  color: var(--accent-link);
+  border-bottom: 1px solid color-mix(in srgb, var(--accent-link) 50%, transparent);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.markdown-body .wikilink:hover {
+  border-bottom-style: solid;
+  opacity: 0.85;
 }
 
 .markdown-body mark {
