@@ -25,3 +25,7 @@ pnpm-debug.log*
 
 # Vite
 *.local
+
+# Local-only docs / secrets (not for version control)
+Reference Docs/
+Archived/
