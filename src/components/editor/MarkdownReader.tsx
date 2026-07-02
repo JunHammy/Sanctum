@@ -18,13 +18,19 @@ function flashScrollTo(id: string) {
 // Vault images are relative paths in the rendered HTML (![](assets/x.png))
 // — resolve them to Drive blob URLs after mount, since it requires network
 // calls that renderNote() itself stays synchronous and free of.
-function useImageResolution(containerRef: React.RefObject<HTMLDivElement | null>, fileTree: FileTreeNode[]) {
+function useImageResolution(containerRef: React.RefObject<HTMLDivElement | null>, html: string, fileTree: FileTreeNode[]) {
   useEffect(() => {
     const container = containerRef.current
     if (!container) return
 
+    // StrictMode runs effects twice in dev (mount, cleanup, mount again);
+    // this guard stops a stale first-pass fetch from overwriting img.src
+    // after the second pass's fetch already won.
+    let cancelled = false
     const objectUrls: string[] = []
     const images = container.querySelectorAll('img')
+
+    console.info(`[image-resolution] found ${images.length} <img> tag(s) to check`)
 
     images.forEach((img) => {
       const src = img.getAttribute('src')
@@ -35,25 +41,31 @@ function useImageResolution(containerRef: React.RefObject<HTMLDivElement | null>
 
       const fileId = findAttachmentByName(fileTree, filename)
       if (!fileId) {
+        console.warn(`[image-resolution] "${filename}" not found anywhere in the vault`)
         img.alt = `${img.alt} (not found in vault)`.trim()
         return
       }
 
       readFileBlob(fileId)
         .then((blob) => {
+          if (cancelled) return
           const url = URL.createObjectURL(blob)
           objectUrls.push(url)
           img.src = url
+          console.info(`[image-resolution] "${filename}" resolved (${blob.type || 'unknown type'}, ${blob.size} bytes)`)
         })
-        .catch(() => {
+        .catch((err) => {
+          if (cancelled) return
+          console.error(`[image-resolution] "${filename}" failed to fetch:`, err)
           img.alt = `${img.alt} (failed to load)`.trim()
         })
     })
 
     return () => {
+      cancelled = true
       objectUrls.forEach((url) => URL.revokeObjectURL(url))
     }
-  }, [containerRef, fileTree])
+  }, [containerRef, html, fileTree])
 }
 
 interface MarkdownReaderProps {
@@ -68,7 +80,7 @@ export function MarkdownReader({ html, currentFileId }: MarkdownReaderProps) {
   const fileTree = useVaultStore((s) => s.fileTree)
   const containerRef = useRef<HTMLDivElement>(null)
 
-  useImageResolution(containerRef, fileTree)
+  useImageResolution(containerRef, html, fileTree)
 
   function handleClick(e: MouseEvent<HTMLDivElement>) {
     const link = (e.target as HTMLElement).closest('.wikilink')

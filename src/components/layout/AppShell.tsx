@@ -14,7 +14,7 @@ interface AppShellProps {
 
 export function AppShell({ fileTree, isLoading, error, onRefresh, children }: AppShellProps) {
   return (
-    <div className="flex min-h-screen flex-col">
+    <div className="flex h-screen flex-col overflow-hidden">
       <Header />
       <div className="flex flex-1 overflow-hidden">
         <Sidebar nodes={fileTree} isLoading={isLoading} error={error} onRefresh={onRefresh} />
