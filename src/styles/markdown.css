@@ -91,3 +91,48 @@
   border-top: 1px solid var(--border);
   margin: 1.5em 0;
 }
+
+.markdown-body .callout {
+  border-left: 3px solid var(--accent-link);
+  background: var(--bg-tertiary);
+  border-radius: 6px;
+  padding: 0.75em 1em;
+  margin: 1em 0;
+}
+
+.markdown-body .callout-title {
+  font-weight: 600;
+  margin: 0 0 0.4em;
+  text-transform: capitalize;
+  color: var(--text-primary);
+}
+
+.markdown-body .callout p:last-child {
+  margin-bottom: 0;
+}
+
+.markdown-body .callout-tip,
+.markdown-body .callout-success {
+  border-left-color: var(--success);
+}
+
+.markdown-body .callout-warning,
+.markdown-body .callout-todo {
+  border-left-color: var(--warning);
+}
+
+.markdown-body .callout-danger,
+.markdown-body .callout-important {
+  border-left-color: var(--error);
+}
+
+.markdown-body .callout-question,
+.markdown-body .callout-example,
+.markdown-body .callout-abstract {
+  border-left-color: var(--accent-tag);
+}
+
+.markdown-body .tag {
+  color: var(--accent-tag);
+  font-size: 0.9em;
+}

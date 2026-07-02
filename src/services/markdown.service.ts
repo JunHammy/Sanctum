@@ -3,6 +3,8 @@ import mark from 'markdown-it-mark'
 import footnote from 'markdown-it-footnote'
 import taskLists from 'markdown-it-task-lists'
 import { load as parseYaml } from 'js-yaml'
+import { calloutPlugin } from '../lib/markdown-plugins/plugin-callout'
+import { tagPlugin } from '../lib/markdown-plugins/plugin-tag'
 import hljs from 'highlight.js/lib/core'
 import bash from 'highlight.js/lib/languages/bash'
 import css from 'highlight.js/lib/languages/css'
@@ -45,6 +47,8 @@ function getRenderer(): MarkdownIt {
       .use(mark) // ==highlight==
       .use(footnote) // [^1]
       .use(taskLists, { enabled: true }) // - [ ] checkboxes
+      .use(calloutPlugin) // > [!TYPE] Title
+      .use(tagPlugin) // #tag
   }
   return renderer
 }
@@ -64,8 +68,8 @@ export interface RenderedNote {
   frontmatter: Record<string, unknown>
 }
 
-// Custom syntax (wikilinks, callouts, tags, math) isn't wired in yet —
-// this is the base Tier 1 markdown-it pipeline plus frontmatter extraction.
+// Wikilinks and math aren't wired in yet — everything else in Tier 1
+// (including callouts and tags) is live.
 export function renderNote(raw: string): RenderedNote {
   const { content, data } = extractFrontmatter(raw)
   const html = getRenderer().render(content)
