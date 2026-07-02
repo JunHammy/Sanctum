@@ -1,0 +1,55 @@
+@import "tailwindcss";
+
+:root[data-theme="dark"] {
+  --bg-primary: #1e1e2e;
+  --bg-secondary: #181825;
+  --bg-tertiary: #313244;
+  --bg-code: #11111b;
+  --text-primary: #cdd6f4;
+  --text-secondary: #a6adc8;
+  --text-muted: #585b70;
+  --accent-link: #89b4fa;
+  --accent-tag: #cba6f7;
+  --accent-heading: #f5c2e7;
+  --accent-highlight: #f9e2af;
+  --border: #313244;
+  --success: #a6e3a1;
+  --warning: #fab387;
+  --error: #f38ba8;
+  --scrollbar-thumb: #45475a;
+  --scrollbar-track: transparent;
+}
+
+:root[data-theme="light"] {
+  --bg-primary: #ffffff;
+  --bg-secondary: #f5f5f5;
+  --bg-tertiary: #e8e8e8;
+  --bg-code: #f0f0f0;
+  --text-primary: #1e1e2e;
+  --text-secondary: #4c4f69;
+  --text-muted: #9ca0b0;
+  --accent-link: #2563eb;
+  --accent-tag: #7c3aed;
+  --accent-heading: #1e1e2e;
+  --accent-highlight: #fbbf24;
+  --border: #e0e0e0;
+  --success: #16a34a;
+  --warning: #ea580c;
+  --error: #dc2626;
+  --scrollbar-thumb: #c0c0c0;
+  --scrollbar-track: transparent;
+}
+
+:root {
+  color-scheme: light dark;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  margin: 0;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
