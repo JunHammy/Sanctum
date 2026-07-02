@@ -4,6 +4,14 @@ import { ChevronRight, ChevronDown } from 'lucide-react'
 import { useUIStore } from '../../stores/ui.store'
 import type { FileTreeNode as FileTreeNodeType } from '../../types/vault.types'
 
+// A folder that's pure attachments (e.g. an "assets" folder holding only
+// images) has nothing to navigate to, so it's hidden from the sidebar —
+// but only from *rendering*. The underlying vault.store tree still has it,
+// since image resolution needs to find attachments there regardless.
+function hasAnyNote(nodes: FileTreeNodeType[]): boolean {
+  return nodes.some((n) => n.type === 'file' || (n.type === 'folder' && hasAnyNote(n.children)))
+}
+
 export function FileTreeNode({ node, depth }: { node: FileTreeNodeType; depth: number }) {
   const [expanded, setExpanded] = useState(false)
   const navigate = useNavigate()
@@ -13,6 +21,8 @@ export function FileTreeNode({ node, depth }: { node: FileTreeNodeType; depth: n
   if (node.type === 'attachment') return null // not shown in the main tree, MP §5.3
 
   if (node.type === 'folder') {
+    if (!hasAnyNote(node.children)) return null
+
     return (
       <div>
         <button
