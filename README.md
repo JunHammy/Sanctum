@@ -6,9 +6,8 @@ Sanctum is a Progressive Web App for reading, writing, and organizing markdown n
 
 ## Docs
 
-- [Sanctum Master Plan](Reference%20Docs/Sanctum-Master-Plan.md) — architecture, design decisions, and full technical spec
-- [Sanctum Dev Plan](Reference%20Docs/Sanctum-Dev-Plan.md) — phased execution plan and current status
+The master plan and dev plan live locally in `Reference Docs/` (gitignored, not published here).
 
 ## Status
 
-Pre-Phase 0 (scaffolding not yet started). See the dev plan for the roadmap.
+Phase 0 (project scaffolding) complete: Vite + React + TypeScript, Tailwind theming, PWA config, hash-routed login/vault/settings pages, deployed to GitHub Pages. Phase 1 (Google OAuth sign-in and Drive vault browsing) is next.
