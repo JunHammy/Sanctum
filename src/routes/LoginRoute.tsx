@@ -1,6 +1,9 @@
 import { LoginButton } from '../components/auth/LoginButton'
+import { useAuthStore } from '../stores/auth.store'
 
 export function LoginRoute() {
+  const error = useAuthStore((s) => s.error)
+
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-6 px-4 text-center">
       <h1 className="text-3xl font-semibold sm:text-4xl" style={{ color: 'var(--accent-heading)' }}>
@@ -10,6 +13,11 @@ export function LoginRoute() {
         A private markdown vault backed by your own Google Drive.
       </p>
       <LoginButton />
+      {error && (
+        <p className="max-w-xs text-sm sm:max-w-sm" style={{ color: 'var(--error)' }}>
+          {error}
+        </p>
+      )}
     </div>
   )
 }
