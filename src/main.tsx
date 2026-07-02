@@ -5,6 +5,9 @@ import './styles/markdown.css'
 import 'highlight.js/styles/atom-one-dark.css'
 import App from './App.tsx'
 
+// Synchronous default to avoid a flash of unstyled content before React
+// mounts; useTheme() then takes over and corrects it to the persisted
+// preference (localStorage) once the app renders.
 document.documentElement.dataset.theme = 'dark'
 
 createRoot(document.getElementById('root')!).render(

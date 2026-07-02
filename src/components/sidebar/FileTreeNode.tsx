@@ -1,10 +1,13 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { ChevronRight, ChevronDown } from 'lucide-react'
+import { useUIStore } from '../../stores/ui.store'
 import type { FileTreeNode as FileTreeNodeType } from '../../types/vault.types'
 
 export function FileTreeNode({ node, depth }: { node: FileTreeNodeType; depth: number }) {
   const [expanded, setExpanded] = useState(false)
   const navigate = useNavigate()
+  const closeSidebar = useUIStore((s) => s.closeSidebar)
   const { fileId } = useParams<{ fileId?: string }>()
 
   if (node.type === 'attachment') return null // not shown in the main tree, MP §5.3
@@ -18,7 +21,7 @@ export function FileTreeNode({ node, depth }: { node: FileTreeNodeType; depth: n
           style={{ paddingLeft: `${depth * 12 + 8}px`, color: 'var(--text-primary)' }}
           onClick={() => setExpanded((v) => !v)}
         >
-          <span aria-hidden>{expanded ? '▾' : '▸'}</span>
+          {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
           <span className="truncate">{node.name}</span>
         </button>
         {expanded &&
@@ -38,7 +41,12 @@ export function FileTreeNode({ node, depth }: { node: FileTreeNodeType; depth: n
         color: isActive ? 'var(--accent-link)' : 'var(--text-secondary)',
         background: isActive ? 'var(--bg-tertiary)' : undefined,
       }}
-      onClick={() => navigate(`/vault/note/${node.id}`)}
+      onClick={() => {
+        navigate(`/vault/note/${node.id}`)
+        // On mobile the sidebar overlays content, so get out of the way
+        // once a note's picked; on desktop it stays open (own layout column).
+        if (window.innerWidth < 640) closeSidebar()
+      }}
     >
       {node.name.replace(/\.md$/, '')}
     </button>

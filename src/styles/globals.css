@@ -1,42 +1,44 @@
 @import "tailwindcss";
 
+/* Notion-inspired: neutral surfaces, no colored headings (bold body-color
+   text instead), color reserved for links/tags/highlights, not decoration. */
 :root[data-theme="dark"] {
-  --bg-primary: #1e1e2e;
-  --bg-secondary: #181825;
-  --bg-tertiary: #313244;
-  --bg-code: #11111b;
-  --text-primary: #cdd6f4;
-  --text-secondary: #a6adc8;
-  --text-muted: #585b70;
-  --accent-link: #89b4fa;
-  --accent-tag: #cba6f7;
-  --accent-heading: #f5c2e7;
-  --accent-highlight: #f9e2af;
-  --border: #313244;
-  --success: #a6e3a1;
-  --warning: #fab387;
-  --error: #f38ba8;
-  --scrollbar-thumb: #45475a;
+  --bg-primary: #17181a;
+  --bg-secondary: #1e1f21;
+  --bg-tertiary: #292a2c;
+  --bg-code: #101112;
+  --text-primary: #e8e3dc;
+  --text-secondary: #9b9995;
+  --text-muted: #6f6d69;
+  --accent-link: #6fa8c9;
+  --accent-tag: #8a9ba8;
+  --accent-heading: #f0ece4;
+  --accent-highlight: #5c4a2a;
+  --border: #303234;
+  --success: #4dab7f;
+  --warning: #d9822b;
+  --error: #e06666;
+  --scrollbar-thumb: #3a3c3e;
   --scrollbar-track: transparent;
 }
 
 :root[data-theme="light"] {
-  --bg-primary: #ffffff;
-  --bg-secondary: #f5f5f5;
-  --bg-tertiary: #e8e8e8;
-  --bg-code: #f0f0f0;
-  --text-primary: #1e1e2e;
-  --text-secondary: #4c4f69;
-  --text-muted: #9ca0b0;
-  --accent-link: #2563eb;
-  --accent-tag: #7c3aed;
-  --accent-heading: #1e1e2e;
-  --accent-highlight: #fbbf24;
-  --border: #e0e0e0;
-  --success: #16a34a;
-  --warning: #ea580c;
-  --error: #dc2626;
-  --scrollbar-thumb: #c0c0c0;
+  --bg-primary: #fdf9f2;
+  --bg-secondary: #f5efe3;
+  --bg-tertiary: #ede4d3;
+  --bg-code: #f5efe3;
+  --text-primary: #37352f;
+  --text-secondary: #78746c;
+  --text-muted: #9b9488;
+  --accent-link: #4f7fa0;
+  --accent-tag: #337ea9;
+  --accent-heading: #2b2a26;
+  --accent-highlight: #fdecc8;
+  --border: #e5dcc9;
+  --success: #4a9a52;
+  --warning: #d9822b;
+  --error: #d94f3e;
+  --scrollbar-thumb: #d6c9ae;
   --scrollbar-track: transparent;
 }
 
@@ -52,4 +54,14 @@ body {
   margin: 0;
   background: var(--bg-primary);
   color: var(--text-primary);
+  font-family: 'Inter', system-ui, 'Segoe UI', Roboto, sans-serif;
+  /* Light text on dark backgrounds "bleeds" and reads heavier than it is,
+     so dark mode gets a slightly lighter weight and a touch more tracking. */
+  font-weight: 350;
+  letter-spacing: 0.01em;
+}
+
+:root[data-theme="light"] body {
+  font-weight: 400;
+  letter-spacing: normal;
 }
