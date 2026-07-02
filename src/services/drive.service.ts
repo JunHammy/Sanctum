@@ -1,0 +1,38 @@
+import { useAuthStore } from '../stores/auth.store'
+import * as driveApi from '../lib/drive-api'
+import { DriveApiError } from '../lib/drive-api'
+import type { DriveFile } from '../lib/drive-api'
+
+const VAULT_FOLDER_NAME = 'Sanctum'
+
+function getToken(): string {
+  const token = useAuthStore.getState().token
+  if (!token) throw new Error('Not signed in')
+  return token
+}
+
+async function withAuth<T>(fn: (token: string) => Promise<T>): Promise<T> {
+  try {
+    return await fn(getToken())
+  } catch (err) {
+    if (err instanceof DriveApiError && err.status === 401) {
+      useAuthStore.getState().signOut()
+    }
+    throw err
+  }
+}
+
+export function listAllFiles(): Promise<DriveFile[]> {
+  return withAuth((token) => driveApi.listAllFiles(token))
+}
+
+// drive.file scope only sees files/folders this app created (or the user
+// picked via Google Picker), so on a first-ever sign-in this always creates
+// a fresh vault folder — it won't find one made outside the app.
+export function findOrCreateVaultFolder(): Promise<DriveFile> {
+  return withAuth(async (token) => {
+    const existing = await driveApi.findFolderByName(token, VAULT_FOLDER_NAME)
+    if (existing) return existing
+    return driveApi.createFolder(token, VAULT_FOLDER_NAME)
+  })
+}
