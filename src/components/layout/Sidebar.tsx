@@ -1,6 +1,7 @@
 import { RefreshCw } from 'lucide-react'
 import { useUIStore } from '../../stores/ui.store'
 import { FileTree } from '../sidebar/FileTree'
+import { LoadingSpinner } from '../common/LoadingSpinner'
 import type { FileTreeNode } from '../../types/vault.types'
 
 interface SidebarProps {
@@ -41,9 +42,9 @@ export function Sidebar({ nodes, isLoading, error, onRefresh }: SidebarProps) {
           </button>
         </div>
         {isLoading && (
-          <p className="px-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
-            Loading vault…
-          </p>
+          <div className="px-2">
+            <LoadingSpinner label="Loading vault…" size={16} />
+          </div>
         )}
         {error && (
           <p className="px-2 text-sm" style={{ color: 'var(--error)' }}>
