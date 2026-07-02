@@ -30,9 +30,10 @@ export function readFile(fileId: string): Promise<string> {
   return withAuth((token) => driveApi.readFile(token, fileId))
 }
 
-// drive.file scope only sees files/folders this app created (or the user
-// picked via Google Picker), so on a first-ever sign-in this always creates
-// a fresh vault folder — it won't find one made outside the app.
+export function readFileBlob(fileId: string): Promise<Blob> {
+  return withAuth((token) => driveApi.readFileBlob(token, fileId))
+}
+
 export function findOrCreateVaultFolder(): Promise<DriveFile> {
   return withAuth(async (token) => {
     const existing = await driveApi.findFolderByName(token, VAULT_FOLDER_NAME)

@@ -77,3 +77,13 @@ export async function readFile(token: string, fileId: string): Promise<string> {
   }
   return res.text()
 }
+
+export async function readFileBlob(token: string, fileId: string): Promise<Blob> {
+  const res = await fetch(`${DRIVE_API_BASE}/files/${fileId}?alt=media`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!res.ok) {
+    throw new DriveApiError(res.status, await res.text())
+  }
+  return res.blob()
+}

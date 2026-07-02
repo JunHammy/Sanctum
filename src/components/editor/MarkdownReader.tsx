@@ -1,8 +1,11 @@
-import type { MouseEvent } from 'react'
+import { useEffect, useRef, type MouseEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useVaultStore } from '../../stores/vault.store'
 import { resolveWikilink } from '../../lib/wikilink-resolver'
+import { findAttachmentByName, isRelativeImagePath } from '../../lib/image-resolver'
 import { slugify } from '../../services/markdown.service'
+import { readFileBlob } from '../../services/drive.service'
+import type { FileTreeNode } from '../../types/vault.types'
 
 function flashScrollTo(id: string) {
   const el = document.getElementById(id)
@@ -10,6 +13,47 @@ function flashScrollTo(id: string) {
   el.scrollIntoView({ behavior: 'smooth', block: 'center' })
   el.classList.add('heading-flash')
   setTimeout(() => el.classList.remove('heading-flash'), 1500)
+}
+
+// Vault images are relative paths in the rendered HTML (![](assets/x.png))
+// — resolve them to Drive blob URLs after mount, since it requires network
+// calls that renderNote() itself stays synchronous and free of.
+function useImageResolution(containerRef: React.RefObject<HTMLDivElement | null>, fileTree: FileTreeNode[]) {
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container) return
+
+    const objectUrls: string[] = []
+    const images = container.querySelectorAll('img')
+
+    images.forEach((img) => {
+      const src = img.getAttribute('src')
+      if (!src || !isRelativeImagePath(src)) return
+
+      const filename = src.split('/').pop()
+      if (!filename) return
+
+      const fileId = findAttachmentByName(fileTree, filename)
+      if (!fileId) {
+        img.alt = `${img.alt} (not found in vault)`.trim()
+        return
+      }
+
+      readFileBlob(fileId)
+        .then((blob) => {
+          const url = URL.createObjectURL(blob)
+          objectUrls.push(url)
+          img.src = url
+        })
+        .catch(() => {
+          img.alt = `${img.alt} (failed to load)`.trim()
+        })
+    })
+
+    return () => {
+      objectUrls.forEach((url) => URL.revokeObjectURL(url))
+    }
+  }, [containerRef, fileTree])
 }
 
 interface MarkdownReaderProps {
@@ -22,6 +66,9 @@ interface MarkdownReaderProps {
 export function MarkdownReader({ html, currentFileId }: MarkdownReaderProps) {
   const navigate = useNavigate()
   const fileTree = useVaultStore((s) => s.fileTree)
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  useImageResolution(containerRef, fileTree)
 
   function handleClick(e: MouseEvent<HTMLDivElement>) {
     const link = (e.target as HTMLElement).closest('.wikilink')
@@ -52,5 +99,12 @@ export function MarkdownReader({ html, currentFileId }: MarkdownReaderProps) {
     }
   }
 
-  return <div className="markdown-body" onClick={handleClick} dangerouslySetInnerHTML={{ __html: html }} />
+  return (
+    <div
+      ref={containerRef}
+      className="markdown-body"
+      onClick={handleClick}
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
+  )
 }
