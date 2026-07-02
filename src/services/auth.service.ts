@@ -8,7 +8,13 @@ export interface AuthUser {
 
 interface TokenResponse {
   access_token: string
+  expires_in?: number
   error?: string
+}
+
+export interface AccessTokenResult {
+  accessToken: string
+  expiresIn: number
 }
 
 interface TokenClient {
@@ -55,7 +61,7 @@ function loadGisScript(): Promise<void> {
   return gisScriptPromise
 }
 
-export async function requestAccessToken(): Promise<string> {
+export async function requestAccessToken(): Promise<AccessTokenResult> {
   await loadGisScript()
 
   return new Promise((resolve, reject) => {
@@ -67,7 +73,7 @@ export async function requestAccessToken(): Promise<string> {
           reject(new Error(response.error ?? 'Sign-in failed'))
           return
         }
-        resolve(response.access_token)
+        resolve({ accessToken: response.access_token, expiresIn: response.expires_in ?? 3600 })
       },
       error_callback: (error) => {
         reject(new Error(error.type === 'popup_closed' ? 'Sign-in cancelled' : `Sign-in failed: ${error.type}`))
