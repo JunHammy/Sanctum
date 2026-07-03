@@ -11,6 +11,7 @@ interface VaultState {
   loadVault: () => Promise<void>
   createNote: (name: string) => Promise<string>
   createFolder: (name: string) => Promise<void>
+  moveNote: (fileId: string, newParentId: string, oldParentId: string) => Promise<void>
 }
 
 const FOLDER_MIME = 'application/vnd.google-apps.folder'
@@ -80,6 +81,11 @@ export const useVaultStore = create<VaultState>()((set, get) => ({
 
   createFolder: async (name) => {
     await driveService.createFolder(name)
+    await get().loadVault()
+  },
+
+  moveNote: async (fileId, newParentId, oldParentId) => {
+    await driveService.moveFile(fileId, newParentId, oldParentId)
     await get().loadVault()
   },
 }))

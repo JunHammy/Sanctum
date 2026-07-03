@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { EditorView, basicSetup } from 'codemirror'
+import { tooltips } from '@codemirror/view'
 import { markdown } from '@codemirror/lang-markdown'
 import { oneDark } from '@codemirror/theme-one-dark'
 import { livePreviewExtension } from '../../lib/codemirror/live-preview'
@@ -33,6 +34,13 @@ export function MarkdownEditor({ value, onChange }: MarkdownEditorProps) {
         markdown(),
         oneDark,
         EditorView.lineWrapping,
+        // Blocks live inside position:relative wrappers (BlockEditor's
+        // per-block container), which CodeMirror would otherwise adopt as
+        // the tooltip's offsetParent — forcing autocomplete/slash-command
+        // dropdowns into a broken absolute-positioned, clipped state
+        // instead of the normal viewport-fixed one. Anchoring to <body>
+        // sidesteps any local positioning/overflow context entirely.
+        tooltips({ parent: document.body }),
         livePreviewExtension,
         customSyntaxExtension,
         slashCommandsExtension,

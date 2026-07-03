@@ -23,9 +23,10 @@ interface MarkdownReaderProps {
 export function MarkdownReader({ html, currentFileId }: MarkdownReaderProps) {
   const navigate = useNavigate()
   const fileTree = useVaultStore((s) => s.fileTree)
+  const isVaultLoading = useVaultStore((s) => s.isLoading)
   const containerRef = useRef<HTMLDivElement>(null)
 
-  useImageResolution(containerRef, html, fileTree)
+  useImageResolution(containerRef, fileTree, isVaultLoading)
 
   function handleClick(e: MouseEvent<HTMLDivElement>) {
     const link = (e.target as HTMLElement).closest('.wikilink')

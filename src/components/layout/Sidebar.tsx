@@ -40,9 +40,9 @@ export function Sidebar({ nodes, isLoading, error, onRefresh }: SidebarProps) {
     <>
       {/* Backdrop: only needed on mobile, where the sidebar overlays content
           instead of sitting in the normal document flow. */}
-      <div className="fixed inset-0 z-30 bg-black/50 sm:hidden" onClick={closeSidebar} aria-hidden="true" />
+      <div className="fixed inset-0 z-30 bg-black/50 lg:hidden" onClick={closeSidebar} aria-hidden="true" />
       <aside
-        className="fixed inset-y-0 left-0 z-40 w-64 overflow-y-auto border-r px-2 py-3 sm:static sm:z-auto sm:py-4"
+        className="fixed inset-y-0 left-0 z-40 w-64 overflow-y-auto border-r px-2 py-3 lg:static lg:z-auto lg:py-4"
         style={{ borderColor: 'var(--border)', background: 'var(--bg-secondary)' }}
       >
         <div className="mb-2 flex items-center justify-between px-2">

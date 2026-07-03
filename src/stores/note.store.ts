@@ -3,6 +3,13 @@ import * as driveService from '../services/drive.service'
 import { renderNote, renderBody, serializeFrontmatter } from '../services/markdown.service'
 
 const AUTO_SAVE_DELAY_MS = 3000
+const MAX_UNDO_ENTRIES = 50
+
+interface NoteSnapshot {
+  rawBody: string
+  frontmatter: Record<string, unknown>
+  frontmatterBlock: string
+}
 
 interface NoteState {
   activeNoteId: string | null
@@ -15,19 +22,51 @@ interface NoteState {
   isDirty: boolean
   isSaving: boolean
   error: string | null
+  undoStack: NoteSnapshot[]
+  redoStack: NoteSnapshot[]
+  // Incremented on every undo/redo. BlockEditor is deliberately uncontrolled
+  // (it never resyncs to external `value` changes, to avoid fighting the
+  // cursor while typing) — but undo/redo *is* an external change it needs
+  // to reflect, so NoteView folds this into BlockEditor's `key` to force a
+  // clean remount (re-split from the reverted rawBody) exactly when it
+  // changes, and not on every normal edit.
+  undoVersion: number
   openNote: (fileId: string) => Promise<void>
   updateContent: (newBody: string) => void
   updateFrontmatterField: (key: string, value: unknown) => void
   removeFrontmatterField: (key: string) => void
   toggleReadMode: () => void
   saveNote: () => Promise<void>
+  undo: () => void
+  redo: () => void
+  reset: () => void
 }
 
 let autoSaveTimer: ReturnType<typeof setTimeout> | null = null
 
-function scheduleAutoSave(save: () => void) {
+// Captures the state *before* the current burst of edits the first time
+// something changes after a quiet period, not on every keystroke — the
+// undo stack should feel like "undo my last batch of typing," not require
+// 40 presses to get back past one sentence. Committed into undoStack only
+// once the burst settles (the debounce timer actually fires).
+let pendingUndoSnapshot: NoteSnapshot | null = null
+
+function captureUndoSnapshotIfNeeded(get: () => NoteState) {
+  if (pendingUndoSnapshot) return
+  const { rawBody, frontmatter, frontmatterBlock } = get()
+  pendingUndoSnapshot = { rawBody, frontmatter, frontmatterBlock }
+}
+
+function scheduleAutoSave(get: () => NoteState, set: (partial: Partial<NoteState>) => void, save: () => void) {
   if (autoSaveTimer) clearTimeout(autoSaveTimer)
-  autoSaveTimer = setTimeout(save, AUTO_SAVE_DELAY_MS)
+  autoSaveTimer = setTimeout(() => {
+    if (pendingUndoSnapshot) {
+      const undoStack = [...get().undoStack, pendingUndoSnapshot].slice(-MAX_UNDO_ENTRIES)
+      set({ undoStack, redoStack: [] })
+      pendingUndoSnapshot = null
+    }
+    save()
+  }, AUTO_SAVE_DELAY_MS)
 }
 
 export const useNoteStore = create<NoteState>()((set, get) => ({
@@ -41,6 +80,9 @@ export const useNoteStore = create<NoteState>()((set, get) => ({
   isDirty: false,
   isSaving: false,
   error: null,
+  undoStack: [],
+  redoStack: [],
+  undoVersion: 0,
 
   openNote: async (fileId) => {
     const current = get()
@@ -53,9 +95,22 @@ export const useNoteStore = create<NoteState>()((set, get) => ({
       await current.saveNote()
     }
 
+    // Undo history is per-note, not global — a fresh note shouldn't be
+    // undoable back into whatever the previously open note looked like.
+    pendingUndoSnapshot = null
+
     // Set activeNoteId immediately so useNote's effect doesn't re-fire on
     // every re-render while this is in flight (or after it fails).
-    set({ isLoading: true, error: null, activeNoteId: fileId, isDirty: false, isReadMode: true })
+    set({
+      isLoading: true,
+      error: null,
+      activeNoteId: fileId,
+      isDirty: false,
+      isReadMode: true,
+      undoStack: [],
+      redoStack: [],
+      undoVersion: 0,
+    })
     try {
       const raw = await driveService.readFile(fileId)
       const { html, frontmatter, frontmatterBlock, rawBody } = renderNote(raw)
@@ -66,8 +121,9 @@ export const useNoteStore = create<NoteState>()((set, get) => ({
   },
 
   updateContent: (newBody) => {
+    captureUndoSnapshotIfNeeded(get)
     set({ rawBody: newBody, html: renderBody(newBody), isDirty: true })
-    scheduleAutoSave(() => get().saveNote())
+    scheduleAutoSave(get, set, () => get().saveNote())
   },
 
   // Once frontmatter is actually edited, the original verbatim block gets
@@ -75,19 +131,58 @@ export const useNoteStore = create<NoteState>()((set, get) => ({
   // see the comment on ExtractedFrontmatter in markdown.service.ts for why
   // it starts out verbatim instead of always-regenerated.
   updateFrontmatterField: (key, value) => {
+    captureUndoSnapshotIfNeeded(get)
     const nextFrontmatter = { ...get().frontmatter, [key]: value }
     set({ frontmatter: nextFrontmatter, frontmatterBlock: serializeFrontmatter(nextFrontmatter), isDirty: true })
-    scheduleAutoSave(() => get().saveNote())
+    scheduleAutoSave(get, set, () => get().saveNote())
   },
 
   removeFrontmatterField: (key) => {
+    captureUndoSnapshotIfNeeded(get)
     const nextFrontmatter = { ...get().frontmatter }
     delete nextFrontmatter[key]
     set({ frontmatter: nextFrontmatter, frontmatterBlock: serializeFrontmatter(nextFrontmatter), isDirty: true })
-    scheduleAutoSave(() => get().saveNote())
+    scheduleAutoSave(get, set, () => get().saveNote())
   },
 
   toggleReadMode: () => set((s) => ({ isReadMode: !s.isReadMode })),
+
+  // Whole-note undo/redo, independent of CodeMirror's per-block history
+  // (which resets every time a different block is clicked into — that's
+  // the gap this fills). Not wired through captureUndoSnapshotIfNeeded/
+  // scheduleAutoSave's burst-grouping since undo/redo are themselves
+  // discrete, deliberate actions.
+  undo: () => {
+    const { undoStack, redoStack, rawBody, frontmatter, frontmatterBlock } = get()
+    if (undoStack.length === 0) return
+    const previous = undoStack[undoStack.length - 1]
+    pendingUndoSnapshot = null
+    set((s) => ({
+      ...previous,
+      undoStack: undoStack.slice(0, -1),
+      redoStack: [...redoStack, { rawBody, frontmatter, frontmatterBlock }].slice(-MAX_UNDO_ENTRIES),
+      html: renderBody(previous.rawBody),
+      isDirty: true,
+      undoVersion: s.undoVersion + 1,
+    }))
+    scheduleAutoSave(get, set, () => get().saveNote())
+  },
+
+  redo: () => {
+    const { undoStack, redoStack, rawBody, frontmatter, frontmatterBlock } = get()
+    if (redoStack.length === 0) return
+    const next = redoStack[redoStack.length - 1]
+    pendingUndoSnapshot = null
+    set((s) => ({
+      ...next,
+      redoStack: redoStack.slice(0, -1),
+      undoStack: [...undoStack, { rawBody, frontmatter, frontmatterBlock }].slice(-MAX_UNDO_ENTRIES),
+      html: renderBody(next.rawBody),
+      isDirty: true,
+      undoVersion: s.undoVersion + 1,
+    }))
+    scheduleAutoSave(get, set, () => get().saveNote())
+  },
 
   saveNote: async () => {
     const { activeNoteId, frontmatterBlock, rawBody, isDirty } = get()
@@ -100,5 +195,33 @@ export const useNoteStore = create<NoteState>()((set, get) => ({
     } catch (err) {
       set({ isSaving: false, error: err instanceof Error ? err.message : 'Failed to save note' })
     }
+  },
+
+  // Called on sign-out. This store is a global singleton independent of
+  // React's component tree, so it otherwise survives a sign-out/sign-in
+  // cycle untouched — including a stale `error` from a failed load and an
+  // `activeNoteId` still pointing at that same note. Without this,
+  // re-clicking the same note after signing back in with a fresh token
+  // would silently do nothing: openNote's caller only refetches when
+  // `fileId !== activeNoteId`, and that guard was still satisfied by the
+  // leftover id from before, so the old error just sat there forever.
+  reset: () => {
+    if (autoSaveTimer) clearTimeout(autoSaveTimer)
+    pendingUndoSnapshot = null
+    set({
+      activeNoteId: null,
+      html: '',
+      rawBody: '',
+      frontmatterBlock: '',
+      frontmatter: {},
+      isLoading: false,
+      isReadMode: true,
+      isDirty: false,
+      isSaving: false,
+      error: null,
+      undoStack: [],
+      redoStack: [],
+      undoVersion: 0,
+    })
   },
 }))

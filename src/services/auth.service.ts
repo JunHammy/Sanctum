@@ -61,7 +61,12 @@ function loadGisScript(): Promise<void> {
   return gisScriptPromise
 }
 
-export async function requestAccessToken(): Promise<AccessTokenResult> {
+// `silent: true` requests renewal with `prompt: ''` — GIS's documented
+// silent-refresh mode, using a hidden iframe against the still-active
+// Google session instead of a visible account picker. Used to renew the
+// access token in the background before it expires, so a long-running
+// session doesn't get force-signed-out mid-edit the moment the token lapses.
+export async function requestAccessToken(options?: { silent?: boolean }): Promise<AccessTokenResult> {
   await loadGisScript()
 
   return new Promise((resolve, reject) => {
@@ -79,7 +84,7 @@ export async function requestAccessToken(): Promise<AccessTokenResult> {
         reject(new Error(error.type === 'popup_closed' ? 'Sign-in cancelled' : `Sign-in failed: ${error.type}`))
       },
     })
-    client.requestAccessToken({ prompt: 'select_account' })
+    client.requestAccessToken({ prompt: options?.silent ? '' : 'select_account' })
   })
 }
 
@@ -91,6 +96,24 @@ export async function fetchUserInfo(accessToken: string): Promise<AuthUser> {
 
   const data = await res.json()
   return { name: data.name, email: data.email, avatar: data.picture }
+}
+
+// Silent renewal (`prompt: ''`) can report success while quietly returning
+// a token scoped down from what was requested — Google doesn't reliably
+// re-grant a sensitive scope like full Drive access without an interactive
+// consent screen. Checking the actual granted scope before trusting a
+// silently-renewed token is the only way to catch that; assuming success
+// meant it once already corrupted a working session with a token that
+// looked fine but 403'd on every Drive call.
+export async function tokenHasScope(accessToken: string, requiredScope: string): Promise<boolean> {
+  try {
+    const res = await fetch(`https://www.googleapis.com/oauth2/v3/tokeninfo?access_token=${accessToken}`)
+    if (!res.ok) return false
+    const data = await res.json()
+    return typeof data.scope === 'string' && data.scope.split(' ').includes(requiredScope)
+  } catch {
+    return false
+  }
 }
 
 export function revokeToken(accessToken: string): Promise<void> {

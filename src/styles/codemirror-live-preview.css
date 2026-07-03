@@ -95,3 +95,46 @@
   font-weight: 600;
   color: var(--text-primary);
 }
+
+/* Hand-rolled slash-command menu (src/lib/codemirror/slash-commands.ts) —
+   appended to document.body directly, not part of CodeMirror's own tooltip
+   system, so it's styled independently here. */
+.sanctum-slash-menu {
+  position: fixed;
+  z-index: 1000;
+  min-width: 190px;
+  max-height: 240px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-secondary);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  padding: 4px;
+}
+
+.sanctum-slash-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.sanctum-slash-item.is-selected,
+.sanctum-slash-item:hover {
+  background: var(--bg-tertiary);
+}
+
+.sanctum-slash-label {
+  font-weight: 500;
+}
+
+.sanctum-slash-detail {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+}

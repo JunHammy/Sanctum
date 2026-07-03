@@ -22,9 +22,14 @@ export function NoteView({ fileId }: { fileId: string }) {
   const updateContent = useNoteStore((s) => s.updateContent)
   const toggleReadMode = useNoteStore((s) => s.toggleReadMode)
   const saveNote = useNoteStore((s) => s.saveNote)
+  const undo = useNoteStore((s) => s.undo)
+  const redo = useNoteStore((s) => s.redo)
+  const undoVersion = useNoteStore((s) => s.undoVersion)
 
   useKeyboardShortcut('s', () => saveNote(), { ctrl: true })
   useKeyboardShortcut('e', () => toggleReadMode(), { ctrl: true })
+  useKeyboardShortcut('z', () => undo(), { ctrl: true })
+  useKeyboardShortcut('z', () => redo(), { ctrl: true, shift: true })
 
   if (isLoading) return <LoadingSpinner label="Loading note…" />
   if (error) return <p style={{ color: 'var(--error)' }}>{error}</p>
@@ -36,7 +41,7 @@ export function NoteView({ fileId }: { fileId: string }) {
         <MarkdownReader html={html} currentFileId={fileId} />
       ) : (
         <Suspense fallback={<LoadingSpinner label="Loading editor…" />}>
-          <BlockEditor key={fileId} value={rawBody} onChange={updateContent} />
+          <BlockEditor key={`${fileId}-${undoVersion}`} value={rawBody} onChange={updateContent} />
         </Suspense>
       )}
     </div>

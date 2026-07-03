@@ -8,6 +8,22 @@ function toEditableString(value: unknown): string {
   return String(value)
 }
 
+function TagsDisplay({ tags }: { tags: string[] }) {
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {tags.map((tag) => (
+        <span
+          key={tag}
+          className="rounded px-1.5 py-0.5 text-xs"
+          style={{ color: 'var(--accent-tag)', background: 'var(--bg-tertiary)' }}
+        >
+          #{tag}
+        </span>
+      ))}
+    </div>
+  )
+}
+
 function TagsEditor({ tags }: { tags: string[] }) {
   const updateFrontmatterField = useNoteStore((s) => s.updateFrontmatterField)
   const [draft, setDraft] = useState('')
@@ -62,13 +78,17 @@ function TagsEditor({ tags }: { tags: string[] }) {
   )
 }
 
-function EditableValue({ propKey, value }: { propKey: string; value: unknown }) {
+function EditableValue({ propKey, value, readOnly }: { propKey: string; value: unknown; readOnly: boolean }) {
   const updateFrontmatterField = useNoteStore((s) => s.updateFrontmatterField)
   const [isEditing, setIsEditing] = useState(false)
   const [draft, setDraft] = useState('')
 
   if (propKey === 'tags' && Array.isArray(value)) {
-    return <TagsEditor tags={value.map(String)} />
+    return readOnly ? <TagsDisplay tags={value.map(String)} /> : <TagsEditor tags={value.map(String)} />
+  }
+
+  if (readOnly) {
+    return <span className="block">{toEditableString(value)}</span>
   }
 
   if (isEditing) {
@@ -165,6 +185,7 @@ function AddPropertyRow() {
 export function PropertiesPanel() {
   const frontmatter = useNoteStore((s) => s.frontmatter)
   const removeFrontmatterField = useNoteStore((s) => s.removeFrontmatterField)
+  const isReadMode = useNoteStore((s) => s.isReadMode)
   const [expanded, setExpanded] = useState(true)
   const entries = Object.entries(frontmatter).filter(
     ([, value]) => value !== undefined && value !== null && value !== '',
@@ -190,21 +211,23 @@ export function PropertiesPanel() {
               </dt>
               <dd className="flex items-center gap-1.5" style={{ color: 'var(--text-primary)' }}>
                 <div className="flex-1">
-                  <EditableValue propKey={key} value={value} />
+                  <EditableValue propKey={key} value={value} readOnly={isReadMode} />
                 </div>
-                <button
-                  type="button"
-                  aria-label={`Remove ${key}`}
-                  className="opacity-0 hover:opacity-70 group-hover:opacity-40"
-                  style={{ color: 'var(--text-muted)' }}
-                  onClick={() => removeFrontmatterField(key)}
-                >
-                  <X size={12} />
-                </button>
+                {!isReadMode && (
+                  <button
+                    type="button"
+                    aria-label={`Remove ${key}`}
+                    className="opacity-0 hover:opacity-70 group-hover:opacity-40"
+                    style={{ color: 'var(--text-muted)' }}
+                    onClick={() => removeFrontmatterField(key)}
+                  >
+                    <X size={12} />
+                  </button>
+                )}
               </dd>
             </div>
           ))}
-          <AddPropertyRow />
+          {!isReadMode && <AddPropertyRow />}
         </dl>
       )}
     </div>

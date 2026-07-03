@@ -118,6 +118,40 @@ export async function createFile(token: string, parentId: string, name: string, 
   return res.json()
 }
 
+export interface DriveRevision {
+  id: string
+  modifiedTime: string
+  size?: string
+}
+
+export async function listRevisions(token: string, fileId: string): Promise<DriveRevision[]> {
+  const data = await request(
+    token,
+    `${DRIVE_API_BASE}/files/${fileId}/revisions?fields=revisions(id,modifiedTime,size)`,
+  )
+  return data.revisions ?? []
+}
+
+export async function readRevision(token: string, fileId: string, revisionId: string): Promise<string> {
+  const res = await fetch(`${DRIVE_API_BASE}/files/${fileId}/revisions/${revisionId}?alt=media`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!res.ok) {
+    throw new DriveApiError(res.status, await res.text())
+  }
+  return res.text()
+}
+
+export async function moveFile(
+  token: string,
+  fileId: string,
+  newParentId: string,
+  oldParentId: string,
+): Promise<DriveFile> {
+  const params = new URLSearchParams({ addParents: newParentId, removeParents: oldParentId, fields: 'id,parents' })
+  return request(token, `${DRIVE_API_BASE}/files/${fileId}?${params.toString()}`, { method: 'PATCH' })
+}
+
 // No separate mimeType param — the blob's own .type already carries this
 // (browsers set it correctly for pasted/dropped files), so a second
 // parameter for the same information would just be dead weight.

@@ -1,8 +1,10 @@
+import { useState } from 'react'
 import { Menu, LogOut, Sun, Moon, History } from 'lucide-react'
 import { useAuthStore } from '../../stores/auth.store'
 import { useUIStore } from '../../stores/ui.store'
 import { useNoteStore } from '../../stores/note.store'
 import { ReadEditToggle } from '../editor/ReadEditToggle'
+import { RevisionsPanel } from '../editor/RevisionsPanel'
 
 export function Header() {
   const user = useAuthStore((s) => s.user)
@@ -13,6 +15,7 @@ export function Header() {
   const activeNoteId = useNoteStore((s) => s.activeNoteId)
   const isDirty = useNoteStore((s) => s.isDirty)
   const isSaving = useNoteStore((s) => s.isSaving)
+  const [revisionsOpen, setRevisionsOpen] = useState(false)
 
   return (
     <header
@@ -39,17 +42,16 @@ export function Header() {
             <span className="hidden text-xs sm:inline" style={{ color: 'var(--text-muted)' }}>
               {isSaving ? 'Saving…' : isDirty ? 'Unsaved changes' : 'Saved'}
             </span>
-            <a
-              href={`https://drive.google.com/file/d/${activeNoteId}/view`}
-              target="_blank"
-              rel="noreferrer"
-              aria-label="Open in Google Drive (version history available there)"
-              title="Open in Google Drive — version history available there"
+            <button
+              type="button"
+              aria-label="Version history"
+              title="Version history"
               className="rounded p-1.5 hover:opacity-80"
               style={{ color: 'var(--text-secondary)' }}
+              onClick={() => setRevisionsOpen(true)}
             >
               <History size={16} />
-            </a>
+            </button>
             <ReadEditToggle />
           </>
         )}
@@ -79,6 +81,9 @@ export function Header() {
           <span className="hidden sm:inline">Sign out</span>
         </button>
       </div>
+      {activeNoteId && (
+        <RevisionsPanel fileId={activeNoteId} isOpen={revisionsOpen} onClose={() => setRevisionsOpen(false)} />
+      )}
     </header>
   )
 }

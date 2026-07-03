@@ -19,6 +19,11 @@ async function handleImageFile(file: File, view: EditorView, pos: number) {
     useVaultStore.getState().loadVault()
   } catch (err) {
     console.error('Image upload failed:', err)
+    // Surfaced in the note itself, not just devtools — a silently dropped
+    // upload (e.g. an expired auth token mid-flight) previously looked
+    // identical to nothing having happened at all.
+    const insert = `![upload failed: ${file.name}]()`
+    view.dispatch({ changes: { from: pos, insert }, selection: { anchor: pos + insert.length } })
   }
 }
 
@@ -31,6 +36,14 @@ function firstImageFile(files: FileList | null): File | null {
 }
 
 export const imageUploadExtension = EditorView.domEventHandlers({
+  // Without also claiming dragover, the browser never considers the editor
+  // a valid drop target and falls back to its default behavior — navigating
+  // the tab to the dropped file instead of handing it to `drop` below.
+  dragover(event) {
+    event.preventDefault()
+    return true
+  },
+
   paste(event, view) {
     const items = event.clipboardData?.items
     if (!items) return false
