@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { ChevronRight, ChevronDown } from 'lucide-react'
 import { useUIStore } from '../../stores/ui.store'
 import { useVaultStore } from '../../stores/vault.store'
+import { useToastStore } from '../../stores/toast.store'
 import type { FileTreeNode as FileTreeNodeType } from '../../types/vault.types'
 
 // The vault-root "assets" folder is a pure attachment dump with nothing to
@@ -30,6 +31,7 @@ export function FileTreeNode({ node, depth, parentId }: { node: FileTreeNodeType
   const navigate = useNavigate()
   const closeSidebar = useUIStore((s) => s.closeSidebar)
   const moveNote = useVaultStore((s) => s.moveNote)
+  const showToast = useToastStore((s) => s.show)
   const { fileId } = useParams<{ fileId?: string }>()
 
   if (node.type === 'attachment') return null // not shown in the main tree, MP §5.3
@@ -61,6 +63,7 @@ export function FileTreeNode({ node, depth, parentId }: { node: FileTreeNodeType
             const payload = JSON.parse(raw) as DragPayload
             if (payload.parentId === node.id) return // already here
             moveNote(payload.fileId, node.id, payload.parentId)
+            showToast(`Moved to "${node.name}"`, 'success')
           }}
         >
           {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}

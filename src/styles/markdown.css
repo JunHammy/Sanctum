@@ -13,8 +13,16 @@
   min-height: 2.5rem;
 }
 
+/* Deliberately NOT monospace here — this is a Live Preview editor (prose
+   rendered inline, not a raw source view), so the editing font should
+   match Read mode's prose font. .cm-live-code below already gives actual
+   code spans/blocks their own monospace treatment. A blanket monospace
+   override here (the previous state of this rule) made every block
+   noticeably taller while active than the same text at rest in Read mode
+   (monospace characters are wider, so prose wraps across more lines) —
+   which is a large part of why toggling Read/Edit visibly jumped. */
 .cm-editor-wrapper .cm-scroller {
-  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-family: 'Inter', system-ui, 'Segoe UI', Roboto, sans-serif;
 }
 
 .markdown-body h1,
@@ -40,13 +48,21 @@
 }
 
 .markdown-body .heading-flash {
-  animation: heading-flash 1.5s ease-out;
+  animation: heading-flash 2s ease-in;
   border-radius: 4px;
 }
 
+/* ease-out (the old timing) front-loads the color change, so the flash
+   was mostly gone within the first fraction of a second regardless of the
+   stated duration. Holding the color flat for the first half and only
+   fading over the remainder makes the duration actually readable. Mixed
+   down to ~50% opacity against the page background — visible without the
+   harder-edged outline ring, which read as more "alert box" than "you
+   landed here." */
 @keyframes heading-flash {
-  0% {
-    background: var(--accent-highlight);
+  0%,
+  50% {
+    background: color-mix(in srgb, var(--flash-highlight) 50%, transparent);
   }
   100% {
     background: transparent;

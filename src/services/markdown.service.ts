@@ -7,6 +7,7 @@ import { calloutPlugin } from '../lib/markdown-plugins/plugin-callout'
 import { tagPlugin } from '../lib/markdown-plugins/plugin-tag'
 import { wikilinkPlugin } from '../lib/markdown-plugins/plugin-wikilink'
 import { blockIdPlugin } from '../lib/markdown-plugins/plugin-block-id'
+import { sourceLinePlugin } from '../lib/markdown-plugins/plugin-source-line'
 import { renderMath } from '../lib/katex-setup'
 import hljs from 'highlight.js/lib/core'
 import bash from 'highlight.js/lib/languages/bash'
@@ -89,6 +90,7 @@ function getRenderer(): MarkdownIt {
       .use(tagPlugin) // #tag
       .use(wikilinkPlugin) // [[Note]], [[Note#Heading]], [[Note^block-id]], [[Note|Alias]]
       .use(headingIdPlugin)
+      .use(sourceLinePlugin) // data-src-line on every top-level block, for scroll-to-line targeting
   }
   return renderer
 }
@@ -104,7 +106,7 @@ interface ExtractedFrontmatter {
   frontmatterBlock: string
 }
 
-function extractFrontmatter(raw: string): ExtractedFrontmatter {
+export function extractFrontmatter(raw: string): ExtractedFrontmatter {
   const match = raw.match(FRONTMATTER_PATTERN)
   if (!match) return { content: raw, data: {}, frontmatterBlock: '' }
 

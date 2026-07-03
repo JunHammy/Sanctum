@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { RefreshCw, FilePlus, FolderPlus } from 'lucide-react'
 import { useUIStore } from '../../stores/ui.store'
 import { useVaultStore } from '../../stores/vault.store'
+import { useToastStore } from '../../stores/toast.store'
 import { FileTree } from '../sidebar/FileTree'
 import { LoadingSpinner } from '../common/LoadingSpinner'
 import { PromptModal } from '../common/PromptModal'
@@ -20,6 +21,7 @@ export function Sidebar({ nodes, isLoading, error, onRefresh }: SidebarProps) {
   const closeSidebar = useUIStore((s) => s.closeSidebar)
   const createNote = useVaultStore((s) => s.createNote)
   const createFolder = useVaultStore((s) => s.createFolder)
+  const showToast = useToastStore((s) => s.show)
   const navigate = useNavigate()
   const [openModal, setOpenModal] = useState<'note' | 'folder' | null>(null)
 
@@ -29,11 +31,13 @@ export function Sidebar({ nodes, isLoading, error, onRefresh }: SidebarProps) {
     setOpenModal(null)
     const fileId = await createNote(name)
     navigate(`/vault/note/${fileId}`)
+    showToast(`Created "${name}"`, 'success')
   }
 
   async function handleCreateFolder(name: string) {
     setOpenModal(null)
     await createFolder(name)
+    showToast(`Created folder "${name}"`, 'success')
   }
 
   return (

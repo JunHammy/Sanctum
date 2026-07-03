@@ -1,6 +1,7 @@
 import { EditorView } from '@codemirror/view'
 import { uploadImage } from '../../services/drive.service'
 import { useVaultStore } from '../../stores/vault.store'
+import { useToastStore } from '../../stores/toast.store'
 
 // Pasting/dropping an image uploads it to the vault's assets/ folder and
 // inserts a markdown image reference at the cursor. Lives at the CodeMirror
@@ -21,9 +22,11 @@ async function handleImageFile(file: File, view: EditorView, pos: number) {
     console.error('Image upload failed:', err)
     // Surfaced in the note itself, not just devtools — a silently dropped
     // upload (e.g. an expired auth token mid-flight) previously looked
-    // identical to nothing having happened at all.
+    // identical to nothing having happened at all. The toast is on top of
+    // that, not instead of it — inline text is easy to miss in a long note.
     const insert = `![upload failed: ${file.name}]()`
     view.dispatch({ changes: { from: pos, insert }, selection: { anchor: pos + insert.length } })
+    useToastStore.getState().show(`Failed to upload "${file.name}"`, 'error')
   }
 }
 

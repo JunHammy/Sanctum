@@ -1,4 +1,4 @@
-import { useRef, type DragEvent } from 'react'
+import { memo, useRef, type DragEvent } from 'react'
 import { ChevronUp, ChevronDown, GripVertical, Plus, Trash2 } from 'lucide-react'
 import { useVaultStore } from '../../stores/vault.store'
 import { useImageResolution } from '../../hooks/useImageResolution'
@@ -12,16 +12,16 @@ interface BlockProps {
   isActive: boolean
   onActivate: (id: string) => void
   onChange: (id: string, rawText: string) => void
-  onAddBelow: () => void
-  onDelete: () => void
-  onDragStart: (e: DragEvent) => void
+  onAddBelow: (id: string) => void
+  onDelete: (id: string) => void
+  onDragStart: (e: DragEvent, id: string) => void
   onDragEnd: () => void
-  onDragOver: (e: DragEvent) => void
-  onDrop: (e: DragEvent) => void
+  onDragOver: (e: DragEvent, id: string) => void
+  onDrop: (e: DragEvent, id: string) => void
   dropIndicator: 'above' | 'below' | null
   isDragging: boolean
-  onMoveUp: () => void
-  onMoveDown: () => void
+  onMoveUp: (id: string) => void
+  onMoveDown: (id: string) => void
   canMoveUp: boolean
   canMoveDown: boolean
 }
@@ -38,7 +38,14 @@ const EMPTY_PLACEHOLDER = '<p class="opacity-40">Click to type…</p>'
 // wikilinks, callouts, math, images, tags all just work here with zero new
 // rendering code, since it's the same pipeline, just scoped to one block.
 // Active content: a scoped instance of the Live Preview CodeMirror editor.
-export function Block({
+//
+// Wrapped in memo() — every callback prop here is a genuinely stable
+// reference from BlockEditor (built on functional setState specifically so
+// they never need to change identity), so this only actually re-renders
+// when *this* block's own data changes. Without that, typing in any one
+// block re-rendered — and re-parsed the markdown, and re-ran image
+// resolution, for — every other block on every keystroke.
+export const Block = memo(function Block({
   block,
   isActive,
   onActivate,
@@ -67,8 +74,8 @@ export function Block({
   return (
     <div
       className="flex items-start gap-1 rounded transition-opacity"
-      onDragOver={onDragOver}
-      onDrop={onDrop}
+      onDragOver={(e) => onDragOver(e, block.id)}
+      onDrop={(e) => onDrop(e, block.id)}
       style={{
         borderTop: `2px solid ${dropIndicator === 'above' ? 'var(--accent-link)' : 'transparent'}`,
         borderBottom: `2px solid ${dropIndicator === 'below' ? 'var(--accent-link)' : 'transparent'}`,
@@ -79,8 +86,13 @@ export function Block({
           never fires on touch at all — so touch gets always-visible Move
           Up/Down buttons instead of a drag handle, while desktop keeps the
           hover-revealed drag-to-reorder interaction. */}
+      {/* Fixed width (not sized to its own content) so this column occupies
+          exactly the same space whether the icons are showing or not —
+          MarkdownReader.tsx reserves an identical-width invisible spacer in
+          Read mode, so the actual text content column never shifts width
+          or reflows when toggling between the two modes. */}
       <div
-        className={`flex shrink-0 flex-col items-center gap-0.5 pt-0.5 transition-opacity select-none ${
+        className={`flex w-7 shrink-0 flex-col items-center gap-0.5 pt-0.5 transition-opacity select-none ${
           isTouch ? 'opacity-70' : 'opacity-0 group-hover:opacity-100'
         }`}
       >
@@ -90,7 +102,7 @@ export function Block({
               type="button"
               aria-label="Move block up"
               disabled={!canMoveUp}
-              onClick={onMoveUp}
+              onClick={() => onMoveUp(block.id)}
               className="rounded p-1.5 hover:bg-[var(--bg-tertiary)] disabled:opacity-30"
               style={{ color: 'var(--text-muted)' }}
             >
@@ -100,7 +112,7 @@ export function Block({
               type="button"
               aria-label="Move block down"
               disabled={!canMoveDown}
-              onClick={onMoveDown}
+              onClick={() => onMoveDown(block.id)}
               className="rounded p-1.5 hover:bg-[var(--bg-tertiary)] disabled:opacity-30"
               style={{ color: 'var(--text-muted)' }}
             >
@@ -112,7 +124,7 @@ export function Block({
             type="button"
             aria-label="Drag to reorder"
             draggable
-            onDragStart={onDragStart}
+            onDragStart={(e) => onDragStart(e, block.id)}
             onDragEnd={onDragEnd}
             className="cursor-grab rounded p-1 hover:bg-[var(--bg-tertiary)] active:cursor-grabbing"
             style={{ color: 'var(--text-muted)' }}
@@ -125,7 +137,7 @@ export function Block({
           aria-label="Add block below"
           className="rounded p-1 hover:bg-[var(--bg-tertiary)]"
           style={{ color: 'var(--text-muted)' }}
-          onClick={onAddBelow}
+          onClick={() => onAddBelow(block.id)}
         >
           <Plus size={16} />
         </button>
@@ -157,7 +169,7 @@ export function Block({
               style={{ color: 'var(--text-muted)' }}
               onClick={(e) => {
                 e.stopPropagation()
-                onDelete()
+                onDelete(block.id)
               }}
             >
               <Trash2 size={14} />
@@ -167,4 +179,4 @@ export function Block({
       </div>
     </div>
   )
-}
+})

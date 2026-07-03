@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import * as driveService from '../services/drive.service'
 import { renderNote, renderBody, serializeFrontmatter } from '../services/markdown.service'
+import { useSearchStore } from './search.store'
 
 const AUTO_SAVE_DELAY_MS = 3000
 const MAX_UNDO_ENTRIES = 50
@@ -31,6 +32,21 @@ interface NoteState {
   // clean remount (re-split from the reverted rawBody) exactly when it
   // changes, and not on every normal edit.
   undoVersion: number
+  // Set right before navigating to a note from a search result (or a
+  // cross-note wikilink), so the note view knows to scroll to and
+  // highlight a specific line once it's rendered, rather than just landing
+  // at the top. Not touched by openNote — it needs to survive the
+  // navigation that triggers openNote in the first place.
+  //
+  // Paired with the target fileId, not just a bare line number — setting
+  // this happens *before* navigate() is called, which means there's a real
+  // window where this store already has the new target but the currently
+  // rendered note is still the *previous* one (openNote's own fetch for
+  // the new note hasn't resolved yet). Without the fileId to check against,
+  // a consumer would fire against that stale content, then clear the
+  // target — leaving nothing to trigger the scroll once the correct note
+  // actually finishes loading a moment later. See MarkdownReader.tsx.
+  pendingScroll: { fileId: string; line: number } | null
   openNote: (fileId: string) => Promise<void>
   updateContent: (newBody: string) => void
   updateFrontmatterField: (key: string, value: unknown) => void
@@ -40,6 +56,7 @@ interface NoteState {
   undo: () => void
   redo: () => void
   reset: () => void
+  setPendingScroll: (target: { fileId: string; line: number } | null) => void
 }
 
 let autoSaveTimer: ReturnType<typeof setTimeout> | null = null
@@ -83,6 +100,9 @@ export const useNoteStore = create<NoteState>()((set, get) => ({
   undoStack: [],
   redoStack: [],
   undoVersion: 0,
+  pendingScroll: null,
+
+  setPendingScroll: (target) => set({ pendingScroll: target }),
 
   openNote: async (fileId) => {
     const current = get()
@@ -192,6 +212,10 @@ export const useNoteStore = create<NoteState>()((set, get) => ({
     try {
       await driveService.updateFile(activeNoteId, frontmatterBlock + rawBody)
       set({ isSaving: false, isDirty: false })
+      // Single-entry reindex, not a full rebuild — keeps search results
+      // current with the just-saved content without waiting for the next
+      // vault load.
+      useSearchStore.getState().updateIndexForNote(activeNoteId, frontmatterBlock + rawBody)
     } catch (err) {
       set({ isSaving: false, error: err instanceof Error ? err.message : 'Failed to save note' })
     }
@@ -222,6 +246,7 @@ export const useNoteStore = create<NoteState>()((set, get) => ({
       undoStack: [],
       redoStack: [],
       undoVersion: 0,
+      pendingScroll: null,
     })
   },
 }))

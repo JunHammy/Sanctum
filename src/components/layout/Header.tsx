@@ -1,12 +1,16 @@
 import { useState } from 'react'
-import { Menu, LogOut, Sun, Moon, History } from 'lucide-react'
+import { Menu, LogOut, Sun, Moon, History, Search } from 'lucide-react'
 import { useAuthStore } from '../../stores/auth.store'
 import { useUIStore } from '../../stores/ui.store'
 import { useNoteStore } from '../../stores/note.store'
 import { ReadEditToggle } from '../editor/ReadEditToggle'
 import { RevisionsPanel } from '../editor/RevisionsPanel'
 
-export function Header() {
+interface HeaderProps {
+  onOpenSearch: () => void
+}
+
+export function Header({ onOpenSearch }: HeaderProps) {
   const user = useAuthStore((s) => s.user)
   const signOut = useAuthStore((s) => s.signOut)
   const toggleSidebar = useUIStore((s) => s.toggleSidebar)
@@ -37,6 +41,16 @@ export function Header() {
         </span>
       </div>
       <div className="flex items-center gap-2 sm:gap-3">
+        <button
+          type="button"
+          aria-label="Search"
+          title="Search (Ctrl+Shift+F)"
+          className="rounded p-1.5 hover:opacity-80"
+          style={{ color: 'var(--text-secondary)' }}
+          onClick={onOpenSearch}
+        >
+          <Search size={16} />
+        </button>
         {activeNoteId && (
           <>
             <span className="hidden text-xs sm:inline" style={{ color: 'var(--text-muted)' }}>

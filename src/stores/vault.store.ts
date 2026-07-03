@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import * as driveService from '../services/drive.service'
+import { useSearchStore } from './search.store'
 import type { DriveFile } from '../lib/drive-api'
 import type { FileTreeNode } from '../types/vault.types'
 
@@ -62,7 +63,11 @@ export const useVaultStore = create<VaultState>()((set, get) => ({
     try {
       const root = await driveService.findOrCreateVaultFolder()
       const files = await driveService.listAllFiles()
-      set({ rootFolderId: root.id, fileTree: buildFileTree(files, root.id), isLoading: false })
+      const fileTree = buildFileTree(files, root.id)
+      set({ rootFolderId: root.id, fileTree, isLoading: false })
+      // Fire-and-forget — indexing note bodies for search shouldn't block
+      // the sidebar from rendering the tree it already has.
+      useSearchStore.getState().buildIndex(fileTree)
     } catch (err) {
       set({ isLoading: false, error: err instanceof Error ? err.message : 'Failed to load vault' })
     }

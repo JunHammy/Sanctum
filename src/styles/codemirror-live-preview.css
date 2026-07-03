@@ -47,6 +47,10 @@
   border-radius: 4px;
 }
 
+.cm-live-codeblock {
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+}
+
 .cm-live-highlight {
   background: var(--accent-highlight);
   color: var(--text-primary);

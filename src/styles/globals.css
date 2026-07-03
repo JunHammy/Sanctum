@@ -14,6 +14,10 @@
   --accent-tag: #8a9ba8;
   --accent-heading: #f0ece4;
   --accent-highlight: #5c4a2a;
+  /* Deliberately more vivid than --accent-highlight (which is tuned to be
+     subtle for permanent inline ==highlight== text) — this is a brief,
+     attention-grabbing "you landed here" flash, meant to actually be seen. */
+  --flash-highlight: #d9a441;
   --border: #303234;
   --success: #4dab7f;
   --warning: #d9822b;
@@ -34,6 +38,7 @@
   --accent-tag: #337ea9;
   --accent-heading: #2b2a26;
   --accent-highlight: #fdecc8;
+  --flash-highlight: #f5b942;
   --border: #e5dcc9;
   --success: #4a9a52;
   --warning: #d9822b;

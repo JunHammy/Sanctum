@@ -3,6 +3,7 @@ import { Modal } from '../common/Modal'
 import { LoadingSpinner } from '../common/LoadingSpinner'
 import { listRevisions, readRevision, updateFile } from '../../services/drive.service'
 import { useNoteStore } from '../../stores/note.store'
+import { useToastStore } from '../../stores/toast.store'
 import type { DriveRevision } from '../../lib/drive-api'
 
 interface RevisionsPanelProps {
@@ -17,6 +18,7 @@ interface RevisionsPanelProps {
 // approach, which turned out to not reliably expose it for non-Docs files.
 export function RevisionsPanel({ fileId, isOpen, onClose }: RevisionsPanelProps) {
   const openNote = useNoteStore((s) => s.openNote)
+  const showToast = useToastStore((s) => s.show)
   const [revisions, setRevisions] = useState<DriveRevision[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -39,6 +41,7 @@ export function RevisionsPanel({ fileId, isOpen, onClose }: RevisionsPanelProps)
       await updateFile(fileId, content)
       await openNote(fileId)
       onClose()
+      showToast('Revision restored', 'success')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to restore revision')
     } finally {

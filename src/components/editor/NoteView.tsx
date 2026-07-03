@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react'
 import { useNote } from '../../hooks/useNote'
 import { useKeyboardShortcut } from '../../hooks/useKeyboard'
 import { useNoteStore } from '../../stores/note.store'
+import { toggleReadModePreservingScroll } from '../../lib/scroll-to-line'
 import { MarkdownReader } from './MarkdownReader'
 import { LoadingSpinner } from '../common/LoadingSpinner'
 import { PropertiesPanel } from './PropertiesPanel'
@@ -20,14 +21,13 @@ export function NoteView({ fileId }: { fileId: string }) {
   const isReadMode = useNoteStore((s) => s.isReadMode)
   const rawBody = useNoteStore((s) => s.rawBody)
   const updateContent = useNoteStore((s) => s.updateContent)
-  const toggleReadMode = useNoteStore((s) => s.toggleReadMode)
   const saveNote = useNoteStore((s) => s.saveNote)
   const undo = useNoteStore((s) => s.undo)
   const redo = useNoteStore((s) => s.redo)
   const undoVersion = useNoteStore((s) => s.undoVersion)
 
   useKeyboardShortcut('s', () => saveNote(), { ctrl: true })
-  useKeyboardShortcut('e', () => toggleReadMode(), { ctrl: true })
+  useKeyboardShortcut('e', () => toggleReadModePreservingScroll(), { ctrl: true })
   useKeyboardShortcut('z', () => undo(), { ctrl: true })
   useKeyboardShortcut('z', () => redo(), { ctrl: true, shift: true })
 

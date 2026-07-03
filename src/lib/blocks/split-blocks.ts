@@ -8,6 +8,10 @@ import MarkdownIt from 'markdown-it'
 export interface Block {
   id: string
   rawText: string
+  // Line this block started at in the raw markdown — shared addressing
+  // scheme with Read mode's data-src-line (plugin-source-line.ts), same
+  // underlying token.map[0] value either way. See scroll-to-line.ts.
+  startLine: number
 }
 
 let blockIdCounter = 0
@@ -38,7 +42,7 @@ export function splitIntoBlocks(markdown: string): Block[] {
       // [startLine, endLine) range, including all of its nested children.
       const [startLine, endLine] = token.map
       const rawText = lines.slice(startLine, endLine).join('\n')
-      blocks.push({ id: nextId(), rawText })
+      blocks.push({ id: nextId(), rawText, startLine })
 
       if (token.type.endsWith('_open')) {
         // Skip past this container's children — markdown-it's nesting
@@ -62,5 +66,5 @@ export function joinBlocks(blocks: Block[]): string {
 }
 
 export function createEmptyBlock(): Block {
-  return { id: nextId(), rawText: '' }
+  return { id: nextId(), rawText: '', startLine: 0 }
 }

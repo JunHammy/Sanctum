@@ -192,7 +192,19 @@ export function PropertiesPanel() {
   )
 
   return (
-    <div className="mb-6 rounded-md border" style={{ borderColor: 'var(--border)' }}>
+    // data-src-line/data-line both set to a sentinel "-1" (never a real
+    // block's line) so scroll-to-line.ts's toggle-preserving logic can
+    // treat this panel as a valid anchor in either mode — it's the one
+    // piece of content that doesn't unmount/swap between Read and Edit
+    // (unlike everything below it), so if you're scrolled to the very top
+    // of a note, restoring to this same element after a toggle is exactly
+    // correct, not an approximation.
+    <div
+      className="mb-6 rounded-md border"
+      data-src-line="-1"
+      data-line="-1"
+      style={{ borderColor: 'var(--border)' }}
+    >
       <button
         type="button"
         className="flex w-full items-center gap-1.5 px-3 py-2 text-xs font-medium tracking-wide uppercase hover:opacity-80"

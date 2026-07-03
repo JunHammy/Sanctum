@@ -83,6 +83,17 @@ function buildDecorations(view: EditorView): DecorationSet {
         if (node.name === 'InlineCode') {
           if (overlapsSelection(view, node.from, node.to)) return
           decorateWrapped(node, 'CodeMark', 'cm-live-code', specs)
+          return
+        }
+
+        // Fenced code blocks need their own monospace treatment now that
+        // the editor's base font is prose (Inter), not monospace — before,
+        // this rode along for free on the old blanket-monospace scroller
+        // rule. Not hiding the ``` fence markers here (unlike headings/
+        // emphasis above) — code blocks aren't part of the same
+        // "reveal syntax on cursor" treatment, this is purely a font fix.
+        if (node.name === 'FencedCode') {
+          specs.push({ from: node.from, to: node.to, deco: Decoration.mark({ class: 'cm-live-codeblock' }) })
         }
       },
     })
