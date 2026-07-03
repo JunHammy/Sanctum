@@ -1,46 +1,174 @@
-import { useState } from 'react'
-import { ChevronDown, ChevronRight } from 'lucide-react'
+import { useState, type KeyboardEvent } from 'react'
+import { ChevronDown, ChevronRight, X, Plus } from 'lucide-react'
+import { useNoteStore } from '../../stores/note.store'
 
-interface PropertiesPanelProps {
-  frontmatter: Record<string, unknown>
+function toEditableString(value: unknown): string {
+  if (value instanceof Date) return value.toISOString().slice(0, 10)
+  if (Array.isArray(value)) return value.map(String).join(', ')
+  return String(value)
 }
 
-function PropertyValue({ propKey, value }: { propKey: string; value: unknown }) {
-  if (propKey === 'tags' && Array.isArray(value)) {
-    return (
-      <div className="flex flex-wrap gap-x-2 gap-y-1">
-        {value.map((tag) => (
-          <span key={String(tag)} style={{ color: 'var(--accent-tag)' }}>
-            #{String(tag)}
-          </span>
-        ))}
-      </div>
+function TagsEditor({ tags }: { tags: string[] }) {
+  const updateFrontmatterField = useNoteStore((s) => s.updateFrontmatterField)
+  const [draft, setDraft] = useState('')
+
+  function addTag() {
+    const tag = draft.trim().replace(/^#/, '')
+    if (!tag || tags.includes(tag)) {
+      setDraft('')
+      return
+    }
+    updateFrontmatterField('tags', [...tags, tag])
+    setDraft('')
+  }
+
+  function removeTag(tag: string) {
+    updateFrontmatterField(
+      'tags',
+      tags.filter((t) => t !== tag),
     )
   }
 
-  // js-yaml parses ISO-8601-looking scalars (e.g. "created: 2026-01-15")
-  // into real Date objects, not strings — format them instead of falling
-  // through to Date's verbose toString().
-  if (value instanceof Date) {
-    return <span>{value.toLocaleDateString()}</span>
-  }
-
-  if (Array.isArray(value)) {
-    return <span>{value.map(String).join(', ')}</span>
-  }
-
-  return <span>{String(value)}</span>
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {tags.map((tag) => (
+        <span
+          key={tag}
+          className="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs"
+          style={{ color: 'var(--accent-tag)', background: 'var(--bg-tertiary)' }}
+        >
+          #{tag}
+          <button type="button" aria-label={`Remove ${tag}`} onClick={() => removeTag(tag)} className="hover:opacity-70">
+            <X size={10} />
+          </button>
+        </span>
+      ))}
+      <input
+        type="text"
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault()
+            addTag()
+          }
+        }}
+        onBlur={addTag}
+        placeholder="add tag…"
+        className="w-20 border-none bg-transparent text-xs outline-none"
+        style={{ color: 'var(--text-muted)' }}
+      />
+    </div>
+  )
 }
 
-// Display-only for now — editing frontmatter needs the CodeMirror editor,
-// which is Phase 2. Phase 1 is read-only, so this just shows what's parsed.
-export function PropertiesPanel({ frontmatter }: PropertiesPanelProps) {
+function EditableValue({ propKey, value }: { propKey: string; value: unknown }) {
+  const updateFrontmatterField = useNoteStore((s) => s.updateFrontmatterField)
+  const [isEditing, setIsEditing] = useState(false)
+  const [draft, setDraft] = useState('')
+
+  if (propKey === 'tags' && Array.isArray(value)) {
+    return <TagsEditor tags={value.map(String)} />
+  }
+
+  if (isEditing) {
+    function commit() {
+      updateFrontmatterField(propKey, draft)
+      setIsEditing(false)
+    }
+    function handleKeyDown(e: KeyboardEvent<HTMLInputElement>) {
+      if (e.key === 'Enter') commit()
+      if (e.key === 'Escape') setIsEditing(false)
+    }
+    return (
+      <input
+        type="text"
+        autoFocus
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={handleKeyDown}
+        className="w-full border-b bg-transparent text-sm outline-none"
+        style={{ borderColor: 'var(--accent-link)', color: 'var(--text-primary)' }}
+      />
+    )
+  }
+
+  return (
+    <span
+      className="block cursor-text rounded hover:bg-[var(--bg-tertiary)]"
+      onClick={() => {
+        setDraft(toEditableString(value))
+        setIsEditing(true)
+      }}
+    >
+      {toEditableString(value)}
+    </span>
+  )
+}
+
+function AddPropertyRow() {
+  const updateFrontmatterField = useNoteStore((s) => s.updateFrontmatterField)
+  const [isAdding, setIsAdding] = useState(false)
+  const [key, setKey] = useState('')
+  const [value, setValue] = useState('')
+
+  if (!isAdding) {
+    return (
+      <button
+        type="button"
+        className="col-span-2 flex items-center gap-1 py-1 text-xs opacity-60 hover:opacity-100"
+        style={{ color: 'var(--text-secondary)' }}
+        onClick={() => setIsAdding(true)}
+      >
+        <Plus size={12} />
+        Add property
+      </button>
+    )
+  }
+
+  function commit() {
+    const trimmedKey = key.trim()
+    if (trimmedKey) updateFrontmatterField(trimmedKey, value.trim())
+    setKey('')
+    setValue('')
+    setIsAdding(false)
+  }
+
+  return (
+    <div className="col-span-2 flex items-center gap-2">
+      <input
+        type="text"
+        autoFocus
+        placeholder="key"
+        value={key}
+        onChange={(e) => setKey(e.target.value)}
+        className="w-24 rounded border px-1.5 py-0.5 text-xs outline-none"
+        style={{ borderColor: 'var(--border)', color: 'var(--text-primary)' }}
+      />
+      <input
+        type="text"
+        placeholder="value"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => e.key === 'Enter' && commit()}
+        onBlur={commit}
+        className="flex-1 rounded border px-1.5 py-0.5 text-xs outline-none"
+        style={{ borderColor: 'var(--border)', color: 'var(--text-primary)' }}
+      />
+    </div>
+  )
+}
+
+// Editing follows the same "click to activate, click/blur away to commit"
+// language as blocks, for consistency across the app.
+export function PropertiesPanel() {
+  const frontmatter = useNoteStore((s) => s.frontmatter)
+  const removeFrontmatterField = useNoteStore((s) => s.removeFrontmatterField)
   const [expanded, setExpanded] = useState(true)
   const entries = Object.entries(frontmatter).filter(
     ([, value]) => value !== undefined && value !== null && value !== '',
   )
-
-  if (entries.length === 0) return null
 
   return (
     <div className="mb-6 rounded-md border" style={{ borderColor: 'var(--border)' }}>
@@ -54,17 +182,29 @@ export function PropertiesPanel({ frontmatter }: PropertiesPanelProps) {
         Properties
       </button>
       {expanded && (
-        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 px-3 pb-3 text-sm">
+        <dl className="grid grid-cols-[auto_1fr] items-start gap-x-4 gap-y-2 px-3 pb-3 text-sm">
           {entries.map(([key, value]) => (
-            <div key={key} className="contents">
-              <dt className="capitalize" style={{ color: 'var(--text-muted)' }}>
+            <div key={key} className="group contents">
+              <dt className="flex items-center gap-1 pt-0.5 capitalize" style={{ color: 'var(--text-muted)' }}>
                 {key}
               </dt>
-              <dd style={{ color: 'var(--text-primary)' }}>
-                <PropertyValue propKey={key} value={value} />
+              <dd className="flex items-center gap-1.5" style={{ color: 'var(--text-primary)' }}>
+                <div className="flex-1">
+                  <EditableValue propKey={key} value={value} />
+                </div>
+                <button
+                  type="button"
+                  aria-label={`Remove ${key}`}
+                  className="opacity-0 hover:opacity-70 group-hover:opacity-40"
+                  style={{ color: 'var(--text-muted)' }}
+                  onClick={() => removeFrontmatterField(key)}
+                >
+                  <X size={12} />
+                </button>
               </dd>
             </div>
           ))}
+          <AddPropertyRow />
         </dl>
       )}
     </div>

@@ -1,9 +1,11 @@
 import { useAuthStore } from '../stores/auth.store'
+import { useVaultStore } from '../stores/vault.store'
 import * as driveApi from '../lib/drive-api'
 import { DriveApiError } from '../lib/drive-api'
 import type { DriveFile } from '../lib/drive-api'
 
 const VAULT_FOLDER_NAME = 'Sanctum'
+const ASSETS_FOLDER_NAME = 'assets'
 
 function getToken(): string {
   const token = useAuthStore.getState().token
@@ -44,4 +46,36 @@ export function findOrCreateVaultFolder(): Promise<DriveFile> {
     if (existing) return existing
     return driveApi.createFolder(token, VAULT_FOLDER_NAME)
   })
+}
+
+function getVaultRootId(): string {
+  const rootFolderId = useVaultStore.getState().rootFolderId
+  if (!rootFolderId) throw new Error('Vault not loaded yet')
+  return rootFolderId
+}
+
+export function createNote(name: string, content: string): Promise<DriveFile> {
+  return withAuth((token) => driveApi.createFile(token, getVaultRootId(), name, content))
+}
+
+export function createFolder(name: string): Promise<DriveFile> {
+  return withAuth((token) => driveApi.createFolder(token, name, getVaultRootId()))
+}
+
+export function findOrCreateAssetsFolder(): Promise<DriveFile> {
+  return withAuth(async (token) => {
+    const rootId = getVaultRootId()
+    const existing = await driveApi.findFolderByName(token, ASSETS_FOLDER_NAME, rootId)
+    if (existing) return existing
+    return driveApi.createFolder(token, ASSETS_FOLDER_NAME, rootId)
+  })
+}
+
+// Returns the filename it was stored under (timestamp-prefixed to avoid
+// collisions), which is what callers insert into markdown as ![](filename).
+export async function uploadImage(file: File): Promise<string> {
+  const filename = `${Date.now()}-${file.name}`
+  const assets = await findOrCreateAssetsFolder()
+  await withAuth((token) => driveApi.uploadBinary(token, assets.id, filename, file))
+  return filename
 }

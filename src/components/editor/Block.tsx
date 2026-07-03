@@ -10,7 +10,6 @@ interface BlockProps {
   block: BlockType
   isActive: boolean
   onActivate: (id: string) => void
-  onDeactivate: () => void
   onChange: (id: string, rawText: string) => void
   onMoveUp: () => void
   onMoveDown: () => void
@@ -30,7 +29,6 @@ export function Block({
   block,
   isActive,
   onActivate,
-  onDeactivate,
   onChange,
   onMoveUp,
   onMoveDown,
@@ -45,14 +43,13 @@ export function Block({
   useImageResolution(containerRef, html, fileTree)
 
   if (isActive) {
-    // Any click/click-away commits (already flowed up via onChange as-you-
-    // type) and returns to rendered view — no separate "save this block"
-    // step needed.
-    return (
-      <div onBlur={onDeactivate}>
-        <MarkdownEditor value={block.rawText} onChange={(text) => onChange(block.id, text)} />
-      </div>
-    )
+    // Deactivation (click-outside or Escape) is handled centrally in
+    // BlockEditor via a document-level listener — see the comment there for
+    // why a wrapping onBlur wasn't reliable (only fires on focus moving to
+    // another focusable element, not clicks on plain page background).
+    // Already flowed up via onChange as-you-type, so no separate "save this
+    // block" step is needed when it deactivates.
+    return <MarkdownEditor value={block.rawText} onChange={(text) => onChange(block.id, text)} />
   }
 
   return (

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Plus } from 'lucide-react'
 import { splitIntoBlocks, joinBlocks, createEmptyBlock, type Block as BlockType } from '../../lib/blocks/split-blocks'
 import { Block } from './Block'
@@ -18,6 +18,32 @@ export function BlockEditor({ value, onChange }: BlockEditorProps) {
     return split.length > 0 ? split : [createEmptyBlock()]
   })
   const [activeId, setActiveId] = useState<string | null>(null)
+
+  // Relying on a wrapping div's onBlur to detect "click outside" only fires
+  // when focus actually moves to another *focusable* element — clicking
+  // plain page padding/background doesn't shift focus at all, so the block
+  // stayed stuck open. A document-level mousedown listener catches any
+  // outside click, focusable or not.
+  useEffect(() => {
+    if (!activeId) return
+
+    function handleMouseDown(e: MouseEvent) {
+      const target = e.target as HTMLElement
+      if (!target.closest(`[data-block-id="${activeId}"]`)) {
+        setActiveId(null)
+      }
+    }
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') setActiveId(null)
+    }
+
+    document.addEventListener('mousedown', handleMouseDown)
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('mousedown', handleMouseDown)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [activeId])
 
   function commit(next: BlockType[]) {
     setBlocks(next)
@@ -57,12 +83,11 @@ export function BlockEditor({ value, onChange }: BlockEditorProps) {
   return (
     <div className="flex flex-col gap-1">
       {blocks.map((block, index) => (
-        <div key={block.id} className="group relative">
+        <div key={block.id} data-block-id={block.id} className="group relative">
           <Block
             block={block}
             isActive={activeId === block.id}
             onActivate={setActiveId}
-            onDeactivate={() => setActiveId(null)}
             onChange={handleBlockChange}
             onMoveUp={() => handleMoveBlock(block.id, -1)}
             onMoveDown={() => handleMoveBlock(block.id, 1)}

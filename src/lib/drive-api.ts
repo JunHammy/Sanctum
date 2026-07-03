@@ -100,3 +100,40 @@ export async function updateFile(token: string, fileId: string, content: string)
   }
   return res.json()
 }
+
+export async function createFile(token: string, parentId: string, name: string, content: string): Promise<DriveFile> {
+  const metadata = { name, parents: [parentId], mimeType: 'text/markdown' }
+  const form = new FormData()
+  form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }))
+  form.append('file', new Blob([content], { type: 'text/markdown' }))
+
+  const res = await fetch(`${DRIVE_UPLOAD_BASE}/files?uploadType=multipart&fields=id,name,mimeType,modifiedTime`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: form,
+  })
+  if (!res.ok) {
+    throw new DriveApiError(res.status, await res.text())
+  }
+  return res.json()
+}
+
+// No separate mimeType param — the blob's own .type already carries this
+// (browsers set it correctly for pasted/dropped files), so a second
+// parameter for the same information would just be dead weight.
+export async function uploadBinary(token: string, parentId: string, name: string, blob: Blob): Promise<DriveFile> {
+  const metadata = { name, parents: [parentId] }
+  const form = new FormData()
+  form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }))
+  form.append('file', blob, name)
+
+  const res = await fetch(`${DRIVE_UPLOAD_BASE}/files?uploadType=multipart&fields=id,name,mimeType,modifiedTime`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: form,
+  })
+  if (!res.ok) {
+    throw new DriveApiError(res.status, await res.text())
+  }
+  return res.json()
+}

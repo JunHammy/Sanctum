@@ -16,7 +16,7 @@ import { PropertiesPanel } from './PropertiesPanel'
 const BlockEditor = lazy(() => import('./BlockEditor').then((m) => ({ default: m.BlockEditor })))
 
 export function NoteView({ fileId }: { fileId: string }) {
-  const { html, frontmatter, isLoading, error } = useNote(fileId)
+  const { html, isLoading, error } = useNote(fileId)
   const isReadMode = useNoteStore((s) => s.isReadMode)
   const rawBody = useNoteStore((s) => s.rawBody)
   const updateContent = useNoteStore((s) => s.updateContent)
@@ -31,7 +31,7 @@ export function NoteView({ fileId }: { fileId: string }) {
 
   return (
     <div>
-      <PropertiesPanel frontmatter={frontmatter} />
+      <PropertiesPanel />
       {isReadMode ? (
         <MarkdownReader html={html} currentFileId={fileId} />
       ) : (

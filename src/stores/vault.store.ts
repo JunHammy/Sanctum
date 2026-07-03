@@ -9,6 +9,8 @@ interface VaultState {
   isLoading: boolean
   error: string | null
   loadVault: () => Promise<void>
+  createNote: (name: string) => Promise<string>
+  createFolder: (name: string) => Promise<void>
 }
 
 const FOLDER_MIME = 'application/vnd.google-apps.folder'
@@ -48,7 +50,7 @@ function buildFileTree(files: DriveFile[], rootId: string): FileTreeNode[] {
   return build(rootId)
 }
 
-export const useVaultStore = create<VaultState>()((set) => ({
+export const useVaultStore = create<VaultState>()((set, get) => ({
   rootFolderId: null,
   fileTree: [],
   isLoading: false,
@@ -63,5 +65,21 @@ export const useVaultStore = create<VaultState>()((set) => ({
     } catch (err) {
       set({ isLoading: false, error: err instanceof Error ? err.message : 'Failed to load vault' })
     }
+  },
+
+  createNote: async (name) => {
+    const filename = name.endsWith('.md') ? name : `${name}.md`
+    const title = name.replace(/\.md$/, '')
+    const today = new Date().toISOString().slice(0, 10)
+    const content = `---\ntitle: ${title}\ncreated: ${today}\n---\n\n# ${title}\n`
+
+    const file = await driveService.createNote(filename, content)
+    await get().loadVault()
+    return file.id
+  },
+
+  createFolder: async (name) => {
+    await driveService.createFolder(name)
+    await get().loadVault()
   },
 }))

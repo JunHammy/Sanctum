@@ -5,6 +5,7 @@ import { oneDark } from '@codemirror/theme-one-dark'
 import { livePreviewExtension } from '../../lib/codemirror/live-preview'
 import { customSyntaxExtension } from '../../lib/codemirror/custom-syntax-decorations'
 import { slashCommandsExtension } from '../../lib/codemirror/slash-commands'
+import { imageUploadExtension } from '../../lib/codemirror/image-upload'
 import '../../styles/codemirror-live-preview.css'
 
 interface MarkdownEditorProps {
@@ -35,6 +36,7 @@ export function MarkdownEditor({ value, onChange }: MarkdownEditorProps) {
         livePreviewExtension,
         customSyntaxExtension,
         slashCommandsExtension,
+        imageUploadExtension,
         EditorView.updateListener.of((update) => {
           if (update.docChanged) {
             onChangeRef.current(update.state.doc.toString())

@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import * as driveService from '../services/drive.service'
-import { renderNote, renderBody } from '../services/markdown.service'
+import { renderNote, renderBody, serializeFrontmatter } from '../services/markdown.service'
 
 const AUTO_SAVE_DELAY_MS = 3000
 
@@ -17,11 +17,18 @@ interface NoteState {
   error: string | null
   openNote: (fileId: string) => Promise<void>
   updateContent: (newBody: string) => void
+  updateFrontmatterField: (key: string, value: unknown) => void
+  removeFrontmatterField: (key: string) => void
   toggleReadMode: () => void
   saveNote: () => Promise<void>
 }
 
 let autoSaveTimer: ReturnType<typeof setTimeout> | null = null
+
+function scheduleAutoSave(save: () => void) {
+  if (autoSaveTimer) clearTimeout(autoSaveTimer)
+  autoSaveTimer = setTimeout(save, AUTO_SAVE_DELAY_MS)
+}
 
 export const useNoteStore = create<NoteState>()((set, get) => ({
   activeNoteId: null,
@@ -60,11 +67,24 @@ export const useNoteStore = create<NoteState>()((set, get) => ({
 
   updateContent: (newBody) => {
     set({ rawBody: newBody, html: renderBody(newBody), isDirty: true })
+    scheduleAutoSave(() => get().saveNote())
+  },
 
-    if (autoSaveTimer) clearTimeout(autoSaveTimer)
-    autoSaveTimer = setTimeout(() => {
-      get().saveNote()
-    }, AUTO_SAVE_DELAY_MS)
+  // Once frontmatter is actually edited, the original verbatim block gets
+  // regenerated via serializeFrontmatter() from here on for this note —
+  // see the comment on ExtractedFrontmatter in markdown.service.ts for why
+  // it starts out verbatim instead of always-regenerated.
+  updateFrontmatterField: (key, value) => {
+    const nextFrontmatter = { ...get().frontmatter, [key]: value }
+    set({ frontmatter: nextFrontmatter, frontmatterBlock: serializeFrontmatter(nextFrontmatter), isDirty: true })
+    scheduleAutoSave(() => get().saveNote())
+  },
+
+  removeFrontmatterField: (key) => {
+    const nextFrontmatter = { ...get().frontmatter }
+    delete nextFrontmatter[key]
+    set({ frontmatter: nextFrontmatter, frontmatterBlock: serializeFrontmatter(nextFrontmatter), isDirty: true })
+    scheduleAutoSave(() => get().saveNote())
   },
 
   toggleReadMode: () => set((s) => ({ isReadMode: !s.isReadMode })),

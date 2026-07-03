@@ -2,7 +2,7 @@ import MarkdownIt from 'markdown-it'
 import mark from 'markdown-it-mark'
 import footnote from 'markdown-it-footnote'
 import taskLists from 'markdown-it-task-lists'
-import { load as parseYaml } from 'js-yaml'
+import { load as parseYaml, dump as dumpYaml } from 'js-yaml'
 import { calloutPlugin } from '../lib/markdown-plugins/plugin-callout'
 import { tagPlugin } from '../lib/markdown-plugins/plugin-tag'
 import { wikilinkPlugin } from '../lib/markdown-plugins/plugin-wikilink'
@@ -110,6 +110,16 @@ function extractFrontmatter(raw: string): ExtractedFrontmatter {
 
   const data = (parseYaml(match[1]) as Record<string, unknown>) ?? {}
   return { content: raw.slice(match[0].length), data, frontmatterBlock: match[0] }
+}
+
+// Only called once frontmatter is actually edited — until then the verbatim
+// original block is preserved as-is (see ExtractedFrontmatter above). Once
+// editing starts, re-serializing is unavoidable; js-yaml's default block
+// style is reasonable, not trying to preserve the user's exact original
+// formatting/key order beyond that.
+export function serializeFrontmatter(data: Record<string, unknown>): string {
+  if (Object.keys(data).length === 0) return ''
+  return `---\n${dumpYaml(data)}---\n`
 }
 
 // Renders just the body (no frontmatter parsing) — used both by renderNote()
