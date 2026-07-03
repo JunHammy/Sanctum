@@ -1,4 +1,5 @@
 const DRIVE_API_BASE = 'https://www.googleapis.com/drive/v3'
+const DRIVE_UPLOAD_BASE = 'https://www.googleapis.com/upload/drive/v3'
 const FOLDER_MIME = 'application/vnd.google-apps.folder'
 
 export interface DriveFile {
@@ -86,4 +87,16 @@ export async function readFileBlob(token: string, fileId: string): Promise<Blob>
     throw new DriveApiError(res.status, await res.text())
   }
   return res.blob()
+}
+
+export async function updateFile(token: string, fileId: string, content: string): Promise<DriveFile> {
+  const res = await fetch(`${DRIVE_UPLOAD_BASE}/files/${fileId}?uploadType=media`, {
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'text/markdown' },
+    body: content,
+  })
+  if (!res.ok) {
+    throw new DriveApiError(res.status, await res.text())
+  }
+  return res.json()
 }

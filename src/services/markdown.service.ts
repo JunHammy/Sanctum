@@ -95,21 +95,38 @@ function getRenderer(): MarkdownIt {
 
 const FRONTMATTER_PATTERN = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/
 
-function extractFrontmatter(raw: string): { content: string; data: Record<string, unknown> } {
+interface ExtractedFrontmatter {
+  content: string
+  data: Record<string, unknown>
+  // The original raw "---\n...\n---\n" block, kept verbatim (not
+  // reconstructed via yaml.dump()) so saving a body-only edit doesn't
+  // reformat frontmatter the user never touched.
+  frontmatterBlock: string
+}
+
+function extractFrontmatter(raw: string): ExtractedFrontmatter {
   const match = raw.match(FRONTMATTER_PATTERN)
-  if (!match) return { content: raw, data: {} }
+  if (!match) return { content: raw, data: {}, frontmatterBlock: '' }
 
   const data = (parseYaml(match[1]) as Record<string, unknown>) ?? {}
-  return { content: raw.slice(match[0].length), data }
+  return { content: raw.slice(match[0].length), data, frontmatterBlock: match[0] }
+}
+
+// Renders just the body (no frontmatter parsing) — used both by renderNote()
+// below and directly by note.store when the editor's content changes, so
+// re-rendering the live preview doesn't need to re-parse frontmatter.
+export function renderBody(content: string): string {
+  return renderMath(getRenderer().render(content))
 }
 
 export interface RenderedNote {
   html: string
   frontmatter: Record<string, unknown>
+  frontmatterBlock: string
+  rawBody: string
 }
 
 export function renderNote(raw: string): RenderedNote {
-  const { content, data } = extractFrontmatter(raw)
-  const html = renderMath(getRenderer().render(content))
-  return { html, frontmatter: data }
+  const { content, data, frontmatterBlock } = extractFrontmatter(raw)
+  return { html: renderBody(content), frontmatter: data, frontmatterBlock, rawBody: content }
 }

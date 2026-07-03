@@ -34,6 +34,10 @@ export function readFileBlob(fileId: string): Promise<Blob> {
   return withAuth((token) => driveApi.readFileBlob(token, fileId))
 }
 
+export function updateFile(fileId: string, content: string): Promise<DriveFile> {
+  return withAuth((token) => driveApi.updateFile(token, fileId, content))
+}
+
 export function findOrCreateVaultFolder(): Promise<DriveFile> {
   return withAuth(async (token) => {
     const existing = await driveApi.findFolderByName(token, VAULT_FOLDER_NAME)
