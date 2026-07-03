@@ -2,6 +2,10 @@ import { useEffect, useRef } from 'react'
 import { EditorView, basicSetup } from 'codemirror'
 import { markdown } from '@codemirror/lang-markdown'
 import { oneDark } from '@codemirror/theme-one-dark'
+import { livePreviewExtension } from '../../lib/codemirror/live-preview'
+import { customSyntaxExtension } from '../../lib/codemirror/custom-syntax-decorations'
+import { slashCommandsExtension } from '../../lib/codemirror/slash-commands'
+import '../../styles/codemirror-live-preview.css'
 
 interface MarkdownEditorProps {
   value: string
@@ -28,6 +32,9 @@ export function MarkdownEditor({ value, onChange }: MarkdownEditorProps) {
         markdown(),
         oneDark,
         EditorView.lineWrapping,
+        livePreviewExtension,
+        customSyntaxExtension,
+        slashCommandsExtension,
         EditorView.updateListener.of((update) => {
           if (update.docChanged) {
             onChangeRef.current(update.state.doc.toString())
