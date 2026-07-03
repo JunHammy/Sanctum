@@ -10,8 +10,11 @@ import { PropertiesPanel } from './PropertiesPanel'
 // CodeMirror (~200KB+ gzipped with basicSetup/markdown mode/theme) is only
 // needed once the user actually enters edit mode, never for reading — lazy
 // loaded the same way Mermaid/Plotly are planned to be, rather than shipping
-// it unconditionally in the main bundle.
-const MarkdownEditor = lazy(() => import('./MarkdownEditor').then((m) => ({ default: m.MarkdownEditor })))
+// it unconditionally in the main bundle. BlockEditor splits the note into
+// per-block sections (each rendered via the same pipeline as read mode when
+// inactive) and internally uses MarkdownEditor for whichever block is
+// currently being edited.
+const BlockEditor = lazy(() => import('./BlockEditor').then((m) => ({ default: m.BlockEditor })))
 
 export function NoteView({ fileId }: { fileId: string }) {
   const { html, frontmatter, isLoading, error } = useNote(fileId)
@@ -42,7 +45,7 @@ export function NoteView({ fileId }: { fileId: string }) {
         <MarkdownReader html={html} currentFileId={fileId} />
       ) : (
         <Suspense fallback={<LoadingSpinner label="Loading editor…" />}>
-          <MarkdownEditor key={fileId} value={rawBody} onChange={updateContent} />
+          <BlockEditor key={fileId} value={rawBody} onChange={updateContent} />
         </Suspense>
       )}
     </div>
