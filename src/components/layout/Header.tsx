@@ -1,6 +1,8 @@
 import { Menu, LogOut, Sun, Moon } from 'lucide-react'
 import { useAuthStore } from '../../stores/auth.store'
 import { useUIStore } from '../../stores/ui.store'
+import { useNoteStore } from '../../stores/note.store'
+import { ReadEditToggle } from '../editor/ReadEditToggle'
 
 export function Header() {
   const user = useAuthStore((s) => s.user)
@@ -8,6 +10,9 @@ export function Header() {
   const toggleSidebar = useUIStore((s) => s.toggleSidebar)
   const theme = useUIStore((s) => s.theme)
   const toggleTheme = useUIStore((s) => s.toggleTheme)
+  const activeNoteId = useNoteStore((s) => s.activeNoteId)
+  const isDirty = useNoteStore((s) => s.isDirty)
+  const isSaving = useNoteStore((s) => s.isSaving)
 
   return (
     <header
@@ -28,7 +33,15 @@ export function Header() {
           Sanctum
         </span>
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 sm:gap-3">
+        {activeNoteId && (
+          <>
+            <span className="hidden text-xs sm:inline" style={{ color: 'var(--text-muted)' }}>
+              {isSaving ? 'Saving…' : isDirty ? 'Unsaved changes' : 'Saved'}
+            </span>
+            <ReadEditToggle />
+          </>
+        )}
         <button
           type="button"
           aria-label="Toggle theme"

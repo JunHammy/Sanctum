@@ -3,7 +3,6 @@ import { useNote } from '../../hooks/useNote'
 import { useKeyboardShortcut } from '../../hooks/useKeyboard'
 import { useNoteStore } from '../../stores/note.store'
 import { MarkdownReader } from './MarkdownReader'
-import { ReadEditToggle } from './ReadEditToggle'
 import { LoadingSpinner } from '../common/LoadingSpinner'
 import { PropertiesPanel } from './PropertiesPanel'
 
@@ -19,8 +18,6 @@ const BlockEditor = lazy(() => import('./BlockEditor').then((m) => ({ default: m
 export function NoteView({ fileId }: { fileId: string }) {
   const { html, frontmatter, isLoading, error } = useNote(fileId)
   const isReadMode = useNoteStore((s) => s.isReadMode)
-  const isDirty = useNoteStore((s) => s.isDirty)
-  const isSaving = useNoteStore((s) => s.isSaving)
   const rawBody = useNoteStore((s) => s.rawBody)
   const updateContent = useNoteStore((s) => s.updateContent)
   const toggleReadMode = useNoteStore((s) => s.toggleReadMode)
@@ -34,12 +31,6 @@ export function NoteView({ fileId }: { fileId: string }) {
 
   return (
     <div>
-      <div className="mb-3 flex items-center justify-between">
-        <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
-          {isSaving ? 'Saving…' : isDirty ? 'Unsaved changes' : 'Saved'}
-        </span>
-        <ReadEditToggle />
-      </div>
       <PropertiesPanel frontmatter={frontmatter} />
       {isReadMode ? (
         <MarkdownReader html={html} currentFileId={fileId} />

@@ -36,9 +36,27 @@ export function BlockEditor({ value, onChange }: BlockEditorProps) {
     setActiveId(newBlock.id)
   }
 
+  function handleMoveBlock(id: string, direction: -1 | 1) {
+    const index = blocks.findIndex((b) => b.id === id)
+    const targetIndex = index + direction
+    if (index === -1 || targetIndex < 0 || targetIndex >= blocks.length) return
+
+    const next = [...blocks]
+    ;[next[index], next[targetIndex]] = [next[targetIndex], next[index]]
+    commit(next)
+  }
+
+  function handleDeleteBlock(id: string) {
+    const next = blocks.filter((b) => b.id !== id)
+    // Always keep at least one block — an empty document is still a
+    // clickable-to-type block, not a blank void.
+    commit(next.length > 0 ? next : [createEmptyBlock()])
+    if (activeId === id) setActiveId(null)
+  }
+
   return (
     <div className="flex flex-col gap-1">
-      {blocks.map((block) => (
+      {blocks.map((block, index) => (
         <div key={block.id} className="group relative">
           <Block
             block={block}
@@ -46,6 +64,11 @@ export function BlockEditor({ value, onChange }: BlockEditorProps) {
             onActivate={setActiveId}
             onDeactivate={() => setActiveId(null)}
             onChange={handleBlockChange}
+            onMoveUp={() => handleMoveBlock(block.id, -1)}
+            onMoveDown={() => handleMoveBlock(block.id, 1)}
+            onDelete={() => handleDeleteBlock(block.id)}
+            canMoveUp={index > 0}
+            canMoveDown={index < blocks.length - 1}
           />
           <button
             type="button"
