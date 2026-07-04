@@ -10,6 +10,11 @@ interface HeaderProps {
   onOpenSearch: () => void
 }
 
+// Three-column navbar layout — left (nav/branding), center (search, the
+// thing you reach for most often, so it gets the most prominent spot),
+// right (note-specific controls + account). Previously search was a small
+// icon squeezed into the same row as save-status/theme/avatar/sign-out,
+// which read as cluttered rather than like a real product navbar.
 export function Header({ onOpenSearch }: HeaderProps) {
   const user = useAuthStore((s) => s.user)
   const signOut = useAuthStore((s) => s.signOut)
@@ -23,10 +28,10 @@ export function Header({ onOpenSearch }: HeaderProps) {
 
   return (
     <header
-      className="flex items-center justify-between gap-2 border-b px-3 py-3 sm:px-4"
+      className="flex items-center gap-2 border-b px-3 py-3 sm:px-4"
       style={{ borderColor: 'var(--border)' }}
     >
-      <div className="flex items-center gap-2 sm:gap-3">
+      <div className="flex shrink-0 items-center gap-2 sm:gap-3">
         <button
           type="button"
           aria-label="Toggle sidebar"
@@ -36,21 +41,31 @@ export function Header({ onOpenSearch }: HeaderProps) {
         >
           <Menu size={18} />
         </button>
-        <span className="font-semibold" style={{ color: 'var(--accent-heading)' }}>
+        <span className="hidden font-semibold sm:inline" style={{ color: 'var(--accent-heading)' }}>
           Sanctum
         </span>
       </div>
-      <div className="flex items-center gap-2 sm:gap-3">
+
+      <div className="flex min-w-0 flex-1 justify-center px-1">
         <button
           type="button"
-          aria-label="Search"
-          title="Search (Ctrl+Shift+F)"
-          className="rounded p-1.5 hover:opacity-80"
-          style={{ color: 'var(--text-secondary)' }}
           onClick={onOpenSearch}
+          title="Search (Ctrl+Shift+F)"
+          className="flex w-full max-w-md items-center gap-2 rounded-md border px-3 py-1.5 text-left text-sm hover:opacity-80"
+          style={{ borderColor: 'var(--border)', background: 'var(--bg-secondary)', color: 'var(--text-muted)' }}
         >
-          <Search size={16} />
+          <Search size={14} className="shrink-0" />
+          <span className="hidden truncate sm:inline">Search notes…</span>
+          <kbd
+            className="ml-auto hidden shrink-0 rounded border px-1.5 py-0.5 text-xs opacity-70 md:inline"
+            style={{ borderColor: 'var(--border)' }}
+          >
+            Ctrl+Shift+F
+          </kbd>
         </button>
+      </div>
+
+      <div className="flex shrink-0 items-center gap-2 sm:gap-3">
         {activeNoteId && (
           <>
             <span className="hidden text-xs sm:inline" style={{ color: 'var(--text-muted)' }}>
@@ -67,6 +82,7 @@ export function Header({ onOpenSearch }: HeaderProps) {
               <History size={16} />
             </button>
             <ReadEditToggle />
+            <span className="hidden h-5 w-px sm:inline" style={{ background: 'var(--border)' }} aria-hidden="true" />
           </>
         )}
         <button

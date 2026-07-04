@@ -4,6 +4,7 @@ import { ChevronRight, ChevronDown } from 'lucide-react'
 import { useUIStore } from '../../stores/ui.store'
 import { useVaultStore } from '../../stores/vault.store'
 import { useToastStore } from '../../stores/toast.store'
+import { toUserMessage, logError } from '../../lib/error-messages'
 import type { FileTreeNode as FileTreeNodeType } from '../../types/vault.types'
 
 // The vault-root "assets" folder is a pure attachment dump with nothing to
@@ -63,7 +64,11 @@ export function FileTreeNode({ node, depth, parentId }: { node: FileTreeNodeType
             const payload = JSON.parse(raw) as DragPayload
             if (payload.parentId === node.id) return // already here
             moveNote(payload.fileId, node.id, payload.parentId)
-            showToast(`Moved to "${node.name}"`, 'success')
+              .then(() => showToast(`Moved to "${node.name}"`, 'success'))
+              .catch((err) => {
+                logError('filetree.moveNote', err)
+                showToast(toUserMessage(err, 'Could not move that note.'), 'error')
+              })
           }}
         >
           {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}

@@ -1,6 +1,8 @@
 import { create } from 'zustand'
 import * as driveService from '../services/drive.service'
 import { useSearchStore } from './search.store'
+import { useToastStore } from './toast.store'
+import { toUserMessage, logError } from '../lib/error-messages'
 import type { DriveFile } from '../lib/drive-api'
 import type { FileTreeNode } from '../types/vault.types'
 
@@ -69,7 +71,10 @@ export const useVaultStore = create<VaultState>()((set, get) => ({
       // the sidebar from rendering the tree it already has.
       useSearchStore.getState().buildIndex(fileTree)
     } catch (err) {
-      set({ isLoading: false, error: err instanceof Error ? err.message : 'Failed to load vault' })
+      const message = toUserMessage(err, 'Could not load your vault from Google Drive.')
+      logError('vault.loadVault', err)
+      useToastStore.getState().show(message, 'error')
+      set({ isLoading: false, error: message })
     }
   },
 

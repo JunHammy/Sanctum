@@ -2,6 +2,8 @@ import { create } from 'zustand'
 import * as driveService from '../services/drive.service'
 import { renderNote, renderBody, serializeFrontmatter } from '../services/markdown.service'
 import { useSearchStore } from './search.store'
+import { useToastStore } from './toast.store'
+import { toUserMessage, logError } from '../lib/error-messages'
 
 const AUTO_SAVE_DELAY_MS = 3000
 const MAX_UNDO_ENTRIES = 50
@@ -136,7 +138,10 @@ export const useNoteStore = create<NoteState>()((set, get) => ({
       const { html, frontmatter, frontmatterBlock, rawBody } = renderNote(raw)
       set({ html, frontmatter, frontmatterBlock, rawBody, isLoading: false })
     } catch (err) {
-      set({ isLoading: false, error: err instanceof Error ? err.message : 'Failed to load note' })
+      const message = toUserMessage(err, 'Could not load this note from Google Drive.')
+      logError('note.openNote', err)
+      useToastStore.getState().show(message, 'error')
+      set({ isLoading: false, error: message })
     }
   },
 
@@ -217,7 +222,10 @@ export const useNoteStore = create<NoteState>()((set, get) => ({
       // vault load.
       useSearchStore.getState().updateIndexForNote(activeNoteId, frontmatterBlock + rawBody)
     } catch (err) {
-      set({ isSaving: false, error: err instanceof Error ? err.message : 'Failed to save note' })
+      const message = toUserMessage(err, 'Could not save your changes to Google Drive.')
+      logError('note.saveNote', err)
+      useToastStore.getState().show(message, 'error')
+      set({ isSaving: false, error: message })
     }
   },
 

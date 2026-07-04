@@ -1,8 +1,9 @@
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, useEffect } from 'react'
 import { useNote } from '../../hooks/useNote'
 import { useKeyboardShortcut } from '../../hooks/useKeyboard'
 import { useNoteStore } from '../../stores/note.store'
 import { toggleReadModePreservingScroll } from '../../lib/scroll-to-line'
+import { loadBlockEditor } from '../../lib/prefetch-block-editor'
 import { MarkdownReader } from './MarkdownReader'
 import { LoadingSpinner } from '../common/LoadingSpinner'
 import { PropertiesPanel } from './PropertiesPanel'
@@ -14,7 +15,7 @@ import { PropertiesPanel } from './PropertiesPanel'
 // per-block sections (each rendered via the same pipeline as read mode when
 // inactive) and internally uses MarkdownEditor for whichever block is
 // currently being edited.
-const BlockEditor = lazy(() => import('./BlockEditor').then((m) => ({ default: m.BlockEditor })))
+const BlockEditor = lazy(() => loadBlockEditor().then((m) => ({ default: m.BlockEditor })))
 
 export function NoteView({ fileId }: { fileId: string }) {
   const { html, isLoading, error } = useNote(fileId)
@@ -30,6 +31,22 @@ export function NoteView({ fileId }: { fileId: string }) {
   useKeyboardShortcut('e', () => toggleReadModePreservingScroll(), { ctrl: true })
   useKeyboardShortcut('z', () => undo(), { ctrl: true })
   useKeyboardShortcut('z', () => redo(), { ctrl: true, shift: true })
+
+  // AppShell already kicks this prefetch off the moment the authenticated
+  // vault shell mounts (before any note is even opened) — this is a
+  // fallback for the (rare) case NoteView somehow mounts without AppShell
+  // ever having done so. Harmless either way: a dynamic import()'s result
+  // is cached by module id, so whichever call fires first does the real
+  // fetch and this one just resolves instantly from that cache. Without
+  // this class of prefetch, the first-ever toggle to Edit mode could take
+  // long enough (chunk download, then mounting a CodeMirror instance per
+  // block) that the toggle-preserving scroll restore in scroll-to-line.ts —
+  // which already waits correctly for the content to exist — became visible
+  // as a jarring "reload to the top, then jump" instead of a clean
+  // transition. Fire-and-forget: not awaited, doesn't affect render.
+  useEffect(() => {
+    loadBlockEditor()
+  }, [])
 
   if (isLoading) return <LoadingSpinner label="Loading note…" />
   if (error) return <p style={{ color: 'var(--error)' }}>{error}</p>

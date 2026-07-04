@@ -1,5 +1,6 @@
 import { useState, type KeyboardEvent } from 'react'
 import { ChevronDown, ChevronRight, X, Plus } from 'lucide-react'
+import { AnimatePresence, motion } from 'motion/react'
 import { useNoteStore } from '../../stores/note.store'
 
 function toEditableString(value: unknown): string {
@@ -214,34 +215,45 @@ export function PropertiesPanel() {
         {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
         Properties
       </button>
-      {expanded && (
-        <dl className="grid grid-cols-[auto_1fr] items-start gap-x-4 gap-y-2 px-3 pb-3 text-sm">
-          {entries.map(([key, value]) => (
-            <div key={key} className="group contents">
-              <dt className="flex items-center gap-1 pt-0.5 capitalize" style={{ color: 'var(--text-muted)' }}>
-                {key}
-              </dt>
-              <dd className="flex items-center gap-1.5" style={{ color: 'var(--text-primary)' }}>
-                <div className="flex-1">
-                  <EditableValue propKey={key} value={value} readOnly={isReadMode} />
+      <AnimatePresence initial={false}>
+        {expanded && (
+          <motion.div
+            key="properties-content"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.15 }}
+            style={{ overflow: 'hidden' }}
+          >
+            <dl className="grid grid-cols-[auto_1fr] items-start gap-x-4 gap-y-2 px-3 pb-3 text-sm">
+              {entries.map(([key, value]) => (
+                <div key={key} className="group contents">
+                  <dt className="flex items-center gap-1 pt-0.5 capitalize" style={{ color: 'var(--text-muted)' }}>
+                    {key}
+                  </dt>
+                  <dd className="flex items-center gap-1.5" style={{ color: 'var(--text-primary)' }}>
+                    <div className="flex-1">
+                      <EditableValue propKey={key} value={value} readOnly={isReadMode} />
+                    </div>
+                    {!isReadMode && (
+                      <button
+                        type="button"
+                        aria-label={`Remove ${key}`}
+                        className="opacity-0 hover:opacity-70 group-hover:opacity-40"
+                        style={{ color: 'var(--text-muted)' }}
+                        onClick={() => removeFrontmatterField(key)}
+                      >
+                        <X size={12} />
+                      </button>
+                    )}
+                  </dd>
                 </div>
-                {!isReadMode && (
-                  <button
-                    type="button"
-                    aria-label={`Remove ${key}`}
-                    className="opacity-0 hover:opacity-70 group-hover:opacity-40"
-                    style={{ color: 'var(--text-muted)' }}
-                    onClick={() => removeFrontmatterField(key)}
-                  >
-                    <X size={12} />
-                  </button>
-                )}
-              </dd>
-            </div>
-          ))}
-          {!isReadMode && <AddPropertyRow />}
-        </dl>
-      )}
+              ))}
+              {!isReadMode && <AddPropertyRow />}
+            </dl>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }
