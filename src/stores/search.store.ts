@@ -3,6 +3,7 @@ import type MiniSearch from 'minisearch'
 import * as searchService from '../services/search.service'
 import type { SearchDoc } from '../services/search.service'
 import { useVaultStore } from './vault.store'
+import { findFileName } from '../lib/vault-tree'
 import type { FileTreeNode } from '../types/vault.types'
 
 export interface SearchResultItem {
@@ -18,17 +19,6 @@ interface SearchState {
   search: (query: string) => SearchResultItem[]
   buildIndex: (fileTree: FileTreeNode[]) => Promise<void>
   updateIndexForNote: (fileId: string, raw: string) => Promise<void>
-}
-
-function findFileName(nodes: FileTreeNode[], id: string): string | null {
-  for (const node of nodes) {
-    if (node.type === 'file' && node.id === id) return node.name
-    if (node.type === 'folder') {
-      const found = findFileName(node.children, id)
-      if (found) return found
-    }
-  }
-  return null
 }
 
 export const useSearchStore = create<SearchState>()((set, get) => ({

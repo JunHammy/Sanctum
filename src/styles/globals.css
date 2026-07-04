@@ -77,3 +77,28 @@ body {
   font-weight: 400;
   letter-spacing: normal;
 }
+
+/* Global button feedback — Tailwind v4's preflight doesn't set a pointer
+   cursor on <button> the way browsers' own UA stylesheets sometimes imply,
+   and most buttons here only had a hover:opacity-* utility with no
+   transition, so the opacity change snapped instantly instead of reading as
+   a hover *effect*. One rule fixes cursor + transition smoothness for every
+   button at once, rather than repeating both on every button across a
+   dozen files. Wrapped in :where() so it carries zero specificity — a few
+   buttons (e.g. Block.tsx's drag handle, cursor-grab/active:cursor-grabbing)
+   intentionally set their own cursor, and a plain `button` element selector
+   would otherwise outrank that single utility class and win. Disabled
+   buttons keep the default cursor and don't get the transition (nothing to
+   smooth if they don't respond to hover anyway). */
+:where(button:not(:disabled)) {
+  cursor: pointer;
+  transition:
+    opacity 120ms ease,
+    background-color 120ms ease,
+    color 120ms ease,
+    border-color 120ms ease;
+}
+
+:where(button:disabled) {
+  cursor: not-allowed;
+}

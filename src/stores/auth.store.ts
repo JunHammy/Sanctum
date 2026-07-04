@@ -16,6 +16,15 @@ interface AuthState {
   tokenExpiresAt: number | null
   isAuthenticated: boolean
   error: string | null
+  // False until persist's sessionStorage rehydration has actually run.
+  // zustand's persist middleware hydrates asynchronously even for a
+  // synchronous storage engine like sessionStorage — there's a real (if
+  // brief) window right after a page load/refresh where `token` still
+  // holds its unhydrated initial value (null) even though a valid token is
+  // sitting in sessionStorage. AuthGate waits on this before mounting any
+  // route, so nothing can fire a Drive API call with a token that just
+  // hasn't loaded yet.
+  hasHydrated: boolean
   signIn: () => Promise<void>
   signOut: () => void
   scheduleRefresh: () => void
@@ -43,6 +52,7 @@ export const useAuthStore = create<AuthState>()(
       tokenExpiresAt: null,
       isAuthenticated: false,
       error: null,
+      hasHydrated: false,
 
       signIn: async () => {
         set({ error: null })
@@ -140,16 +150,41 @@ export const useAuthStore = create<AuthState>()(
         isAuthenticated: state.isAuthenticated,
       }),
       onRehydrateStorage: () => (state) => {
-        if (!state) return
-        if (state.tokenExpiresAt && state.tokenExpiresAt < Date.now()) {
-          state.token = null
-          state.user = null
-          state.tokenExpiresAt = null
-          state.isAuthenticated = false
-        } else {
-          state.scheduleRefresh()
+        // Runs even when there's nothing in sessionStorage yet (a brand
+        // new tab) — hasHydrated still needs to flip so AuthGate isn't
+        // stuck waiting forever in that case.
+        if (state) {
+          if (state.tokenExpiresAt && state.tokenExpiresAt < Date.now()) {
+            state.token = null
+            state.user = null
+            state.tokenExpiresAt = null
+            state.isAuthenticated = false
+          } else {
+            state.scheduleRefresh()
+          }
         }
+        // Deferred to a microtask, not called directly: for a synchronous
+        // storage engine like sessionStorage, this callback can fire
+        // synchronously *during* the create() call below — at that exact
+        // moment `useAuthStore` (the const being assigned on the other side
+        // of that same create() call) is still in its temporal dead zone,
+        // so referencing it directly threw a ReferenceError that crashed
+        // this whole module's evaluation, taking the entire app down to a
+        // blank page. Queuing this guarantees it only runs once that
+        // assignment has actually completed.
+        queueMicrotask(() => useAuthStore.setState({ hasHydrated: true }))
       },
     },
   ),
 )
+
+// Belt-and-braces: AuthGate renders nothing at all until hasHydrated is
+// true, so if it somehow never gets set (a future zustand version change,
+// a storage error persist doesn't call the rehydrate callback for, etc.)
+// the entire app would be silently stuck on a blank page forever with no
+// way to recover short of noticing and reporting it. This guarantees that
+// can't happen — worst case, a genuinely broken hydration just falls back
+// to treating the user as signed out after a fraction of a second.
+setTimeout(() => {
+  if (!useAuthStore.getState().hasHydrated) useAuthStore.setState({ hasHydrated: true })
+}, 1000)

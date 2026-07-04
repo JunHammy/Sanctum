@@ -1,4 +1,4 @@
-import { useEffect, useRef, type MouseEvent } from 'react'
+import { useEffect, useLayoutEffect, useRef, type MouseEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useVaultStore } from '../../stores/vault.store'
 import { useNoteStore } from '../../stores/note.store'
@@ -7,7 +7,9 @@ import { slugify } from '../../services/markdown.service'
 import { findWikilinkTargetLine } from '../../services/search.service'
 import { readFile } from '../../services/drive.service'
 import { useImageResolution } from '../../hooks/useImageResolution'
-import { scrollToLineWithFlash } from '../../lib/scroll-to-line'
+import { scrollToLineWithFlash, consumePendingScrollAnchor } from '../../lib/scroll-to-line'
+
+const READ_MODE_SELECTOR = '[data-src-line]'
 
 const FLASH_CLASS = 'heading-flash'
 const FLASH_DURATION_MS = 2000
@@ -40,6 +42,16 @@ export function MarkdownReader({ html, currentFileId }: MarkdownReaderProps) {
   const containerRef = useRef<HTMLDivElement>(null)
 
   useImageResolution(containerRef, fileTree, isVaultLoading)
+
+  // Restores scroll position after switching *into* Read mode from Edit
+  // (toggleReadModePreservingScroll in scroll-to-line.ts) — a no-op on a
+  // plain note load, since there's nothing pending then. Runs once per
+  // mount; MarkdownReader is only ever mounted with its real `html` already
+  // in place (NoteView shows a loading spinner instead of this component
+  // until that's true), so the content this searches over is never partial.
+  useLayoutEffect(() => {
+    consumePendingScrollAnchor(READ_MODE_SELECTOR)
+  }, [])
 
   // Consumes a scroll target set before navigating here — by a search
   // result (SearchModal) or a cross-note wikilink jump below. The fileId

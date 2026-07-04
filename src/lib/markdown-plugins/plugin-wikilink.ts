@@ -1,11 +1,7 @@
 import type MarkdownIt from 'markdown-it'
+import { parseWikilinkInner } from '../wikilink-syntax'
 
-interface WikilinkMeta {
-  target: string
-  heading: string
-  blockId: string
-  alias: string
-}
+type WikilinkMeta = ReturnType<typeof parseWikilinkInner>
 
 // Parses [[Note]], [[Note#Heading]], [[Note^block-id]], [[Note|Alias]] into
 // <a class="wikilink" data-target="..." data-heading="..." data-block="...">.
@@ -24,34 +20,8 @@ export function wikilinkPlugin(md: MarkdownIt): void {
 
     if (!silent) {
       const inner = src.slice(2, closeIdx)
-
-      let target = inner
-      let heading = ''
-      let blockId = ''
-      let alias = ''
-
-      if (inner.includes('|')) {
-        const [t, a] = inner.split('|')
-        target = t
-        alias = a ?? ''
-      }
-      if (target.includes('^')) {
-        const [t, b] = target.split('^')
-        target = t
-        blockId = b ?? ''
-      } else if (target.includes('#')) {
-        const [t, h] = target.split('#')
-        target = t
-        heading = h ?? ''
-      }
-
       const token = state.push('wikilink', 'a', 0)
-      token.meta = {
-        target: target.trim(),
-        heading: heading.trim(),
-        blockId: blockId.trim(),
-        alias: alias.trim(),
-      } satisfies WikilinkMeta
+      token.meta = parseWikilinkInner(inner) satisfies WikilinkMeta
     }
 
     state.pos += closeIdx + 2

@@ -7,6 +7,7 @@ import { loadBlockEditor } from '../../lib/prefetch-block-editor'
 import { MarkdownReader } from './MarkdownReader'
 import { LoadingSpinner } from '../common/LoadingSpinner'
 import { PropertiesPanel } from './PropertiesPanel'
+import { BacklinksPanel } from './BacklinksPanel'
 
 // CodeMirror (~200KB+ gzipped with basicSetup/markdown mode/theme) is only
 // needed once the user actually enters edit mode, never for reading — lazy
@@ -61,6 +62,7 @@ export function NoteView({ fileId }: { fileId: string }) {
           <BlockEditor key={`${fileId}-${undoVersion}`} value={rawBody} onChange={updateContent} />
         </Suspense>
       )}
+      <BacklinksPanel fileId={fileId} />
     </div>
   )
 }

@@ -36,7 +36,11 @@ export function findElementNearLine(selector: string, targetLine: number): Eleme
   let bestLine = -Infinity
   for (const el of elements) {
     const line = lineOf(el)
-    if (!Number.isNaN(line) && line <= targetLine && line > bestLine) {
+    // >= 0 excludes PropertiesPanel's permanent `-1` sentinel (it never
+    // unmounts between Read/Edit, so it's always a candidate otherwise) —
+    // it's a valid *scroll target* for "top of note" but shouldn't be
+    // picked here as a stand-in for real content that hasn't rendered yet.
+    if (line >= 0 && line <= targetLine && line > bestLine) {
       best = el
       bestLine = line
     }
@@ -99,58 +103,42 @@ export function scrollToLineWithFlash(selector: string, line: number) {
   })
 }
 
-// Bumped whenever a new toggle starts, so an older toggle's still-pending
-// restore (e.g. one still waiting on afterDomSettles) can tell it's been
-// superseded and bail instead of firing late — rapid repeated toggling
-// was stacking up multiple delayed restores that fired out of order,
-// which is what made it feel like it was glitching *more*, not less.
-let toggleGeneration = 0
-
-// Toggling Read/Edit swaps the whole content DOM (a continuous rendered
-// blob vs. a list of CodeMirror instances), and the two don't produce
-// identical block heights — without this, the page visibly jumps on every
-// toggle even though nothing the user asked to move actually did.
+// --- Read/Edit toggle scroll preservation ---
+//
+// Previous design captured the anchor line, then used an external
+// MutationObserver + settle-timer to *guess* from outside React when the
+// other mode's content had actually mounted, before manually calling
+// scrollIntoView. That fought React instead of using it: it could
+// mistake PropertiesPanel's permanent scroll-anchor sentinel for "real
+// content already exists," it raced Suspense/lazy-loading in ways that
+// were hard to reason about, and it always painted at least one wrong
+// frame before correcting itself — the visible flicker.
+//
+// This version stores the anchor line in note.store and lets whichever
+// content component mounts next (MarkdownReader or BlockEditor) restore
+// its own scroll position, via a useLayoutEffect that calls
+// consumePendingScrollAnchor() below. React guarantees a component's
+// layout effects run synchronously right after its DOM commits and
+// *before* the browser paints — so there's no polling, no guessing, and
+// nothing wrong ever gets painted in the first place.
 export function toggleReadModePreservingScroll() {
-  const myGeneration = ++toggleGeneration
-  const { isReadMode, toggleReadMode } = useNoteStore.getState()
+  const { isReadMode, toggleReadMode, setPendingScrollAnchor } = useNoteStore.getState()
   const currentSelector = isReadMode ? READ_MODE_SELECTOR : EDIT_MODE_SELECTOR
-  const nextSelector = isReadMode ? EDIT_MODE_SELECTOR : READ_MODE_SELECTOR
-
   const anchor = findTopmostVisible(currentSelector)
   const anchorLine = anchor ? lineOf(anchor) : NaN
 
+  setPendingScrollAnchor(Number.isNaN(anchorLine) ? null : anchorLine)
   toggleReadMode()
+}
 
-  if (Number.isNaN(anchorLine)) return
-
-  function restore() {
-    if (myGeneration !== toggleGeneration) return // a later toggle already took over
-    const target = findElementNearLine(nextSelector, anchorLine)
-    target?.scrollIntoView({ behavior: 'auto', block: 'start' })
-  }
-
-  if (document.querySelector(nextSelector)) {
-    // Fast path — content already exists (the common case, every toggle
-    // after the first), just needs one frame for React to finish
-    // committing this toggle's render. No artificial settle delay here;
-    // that's what was making every toggle feel sluggish.
-    requestAnimationFrame(restore)
-    return
-  }
-
-  // Slow path — content doesn't exist yet at all. Only happens switching
-  // *into* Edit mode for the very first time: BlockEditor is lazy-loaded
-  // (a separate JS chunk), so there's a real Suspense/network wait before
-  // its content exists. Watch for it to actually appear, then let it
-  // settle before restoring, rather than guessing at a delay.
-  const observer = new MutationObserver(() => {
-    if (document.querySelector(nextSelector)) {
-      observer.disconnect()
-      afterDomSettles(restore)
-    }
-  })
-  observer.observe(document.body, { childList: true, subtree: true })
-  // Safety net — if the target content never shows up for some reason,
-  // don't leave an observer running on the page forever.
-  setTimeout(() => observer.disconnect(), 5000)
+// Called from a useLayoutEffect in whichever content component just
+// mounted. Safe to call unconditionally on every mount (including a
+// note's very first load, or BlockEditor remounting on undo/redo) — it's
+// a no-op whenever there's no pending anchor to restore.
+export function consumePendingScrollAnchor(selector: string) {
+  const { pendingScrollAnchor, setPendingScrollAnchor } = useNoteStore.getState()
+  if (pendingScrollAnchor === null) return
+  const target = findElementNearLine(selector, pendingScrollAnchor)
+  target?.scrollIntoView({ behavior: 'auto', block: 'start' })
+  setPendingScrollAnchor(null)
 }

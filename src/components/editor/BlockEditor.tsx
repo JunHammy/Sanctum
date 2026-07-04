@@ -1,7 +1,10 @@
-import { useCallback, useEffect, useRef, useState, type DragEvent } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type DragEvent } from 'react'
 import { Plus } from 'lucide-react'
 import { splitIntoBlocks, joinBlocks, createEmptyBlock, type Block as BlockType } from '../../lib/blocks/split-blocks'
+import { consumePendingScrollAnchor } from '../../lib/scroll-to-line'
 import { Block } from './Block'
+
+const EDIT_MODE_SELECTOR = '[data-line]'
 
 interface BlockEditorProps {
   value: string
@@ -43,6 +46,19 @@ export function BlockEditor({ value, onChange }: BlockEditorProps) {
   // times per second while dragging) and defeating Block's memoization for
   // every block, not just the one being dragged over.
   const dropPositionRef = useRef<'above' | 'below' | null>(null)
+
+  // Restores scroll position after switching *into* Edit mode from Read
+  // (toggleReadModePreservingScroll in scroll-to-line.ts) — a no-op if
+  // there's nothing pending (a plain toggle-into-Edit that isn't the first
+  // one, undo/redo remounting this via its key change, etc). This is what
+  // replaced the old MutationObserver-based wait for BlockEditor's lazy
+  // chunk to finish loading: this effect only runs once React has actually
+  // committed this component's blocks (with their real data-line values) to
+  // the DOM, so there's no separate "has it loaded yet" check needed at all
+  // — Suspense resolving *is* what triggers this mount.
+  useLayoutEffect(() => {
+    consumePendingScrollAnchor(EDIT_MODE_SELECTOR)
+  }, [])
 
   // In case the note switches (unmounting this instance) mid-drag, e.g. via
   // a keyboard shortcut — an orphaned rAF loop would otherwise keep

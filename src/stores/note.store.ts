@@ -2,6 +2,8 @@ import { create } from 'zustand'
 import * as driveService from '../services/drive.service'
 import { renderNote, renderBody, serializeFrontmatter } from '../services/markdown.service'
 import { useSearchStore } from './search.store'
+import { useBacklinksStore } from './backlinks.store'
+import { useVaultStore } from './vault.store'
 import { useToastStore } from './toast.store'
 import { toUserMessage, logError } from '../lib/error-messages'
 
@@ -49,6 +51,14 @@ interface NoteState {
   // target — leaving nothing to trigger the scroll once the correct note
   // actually finishes loading a moment later. See MarkdownReader.tsx.
   pendingScroll: { fileId: string; line: number } | null
+  // Set right before a Read/Edit toggle (toggleReadModePreservingScroll in
+  // scroll-to-line.ts), consumed by whichever content component mounts next
+  // via its own useLayoutEffect (consumePendingScrollAnchor) — see that
+  // file for why this replaced an external MutationObserver-based design.
+  // No fileId pairing needed here (unlike pendingScroll above): toggling
+  // always happens within the note that's already open, never across a
+  // navigation.
+  pendingScrollAnchor: number | null
   openNote: (fileId: string) => Promise<void>
   updateContent: (newBody: string) => void
   updateFrontmatterField: (key: string, value: unknown) => void
@@ -59,6 +69,7 @@ interface NoteState {
   redo: () => void
   reset: () => void
   setPendingScroll: (target: { fileId: string; line: number } | null) => void
+  setPendingScrollAnchor: (line: number | null) => void
 }
 
 let autoSaveTimer: ReturnType<typeof setTimeout> | null = null
@@ -103,8 +114,10 @@ export const useNoteStore = create<NoteState>()((set, get) => ({
   redoStack: [],
   undoVersion: 0,
   pendingScroll: null,
+  pendingScrollAnchor: null,
 
   setPendingScroll: (target) => set({ pendingScroll: target }),
+  setPendingScrollAnchor: (line) => set({ pendingScrollAnchor: line }),
 
   openNote: async (fileId) => {
     const current = get()
@@ -132,6 +145,10 @@ export const useNoteStore = create<NoteState>()((set, get) => ({
       undoStack: [],
       redoStack: [],
       undoVersion: 0,
+      // A toggle that set this but got abandoned (e.g. the user navigated
+      // away before BlockEditor's Suspense resolved) shouldn't leak into
+      // whatever note opens next and scroll it to an unrelated line.
+      pendingScrollAnchor: null,
     })
     try {
       const raw = await driveService.readFile(fileId)
@@ -221,6 +238,9 @@ export const useNoteStore = create<NoteState>()((set, get) => ({
       // current with the just-saved content without waiting for the next
       // vault load.
       useSearchStore.getState().updateIndexForNote(activeNoteId, frontmatterBlock + rawBody)
+      useBacklinksStore
+        .getState()
+        .updateForNote(activeNoteId, frontmatterBlock + rawBody, useVaultStore.getState().fileTree)
     } catch (err) {
       const message = toUserMessage(err, 'Could not save your changes to Google Drive.')
       logError('note.saveNote', err)

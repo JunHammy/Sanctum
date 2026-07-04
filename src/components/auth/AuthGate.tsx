@@ -11,7 +11,19 @@ import { useAuthStore } from '../../stores/auth.store'
 // means that frame never renders the stale children at all.
 export function AuthGate({ children }: { children: ReactNode }) {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
+  const hasHydrated = useAuthStore((s) => s.hasHydrated)
   const location = useLocation()
+
+  // zustand's persist middleware hydrates sessionStorage asynchronously,
+  // even though sessionStorage itself is synchronous — right after a page
+  // refresh there's a brief window where `isAuthenticated`/`token` still
+  // hold their unhydrated initial (signed-out) values. Rendering nothing
+  // until hydration completes means VaultRoute/NoteView never mount (and
+  // never fire a Drive API call) with a token that just hasn't loaded yet
+  // — previously, a note opened in that window would fail with "Not signed
+  // in" and never automatically retry, since openNote marks the note as
+  // already-attempted before the fetch even runs.
+  if (!hasHydrated) return null
 
   if (!isAuthenticated && location.pathname !== '/login') {
     return <Navigate to="/login" replace />
