@@ -49,20 +49,20 @@
 
 .markdown-body .heading-flash {
   animation: heading-flash 2s ease-in;
-  border-radius: 4px;
+  border-radius: 6px;
 }
 
 /* ease-out (the old timing) front-loads the color change, so the flash
    was mostly gone within the first fraction of a second regardless of the
    stated duration. Holding the color flat for the first half and only
-   fading over the remainder makes the duration actually readable. Mixed
-   down to ~50% opacity against the page background — visible without the
-   harder-edged outline ring, which read as more "alert box" than "you
-   landed here." */
+   fading over the remainder makes the duration actually readable. Kept
+   deliberately plain — a solid, subtle background wash — after a fancier
+   blurred-glow (box-shadow) version read as a stranger "halo" bleeding
+   into the surrounding whitespace rather than a clean highlight. */
 @keyframes heading-flash {
   0%,
   50% {
-    background: color-mix(in srgb, var(--flash-highlight) 50%, transparent);
+    background: color-mix(in srgb, var(--flash-highlight) 20%, transparent);
   }
   100% {
     background: transparent;

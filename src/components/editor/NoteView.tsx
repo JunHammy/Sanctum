@@ -7,6 +7,7 @@ import { loadBlockEditor } from '../../lib/prefetch-block-editor'
 import { MarkdownReader } from './MarkdownReader'
 import { LoadingSpinner } from '../common/LoadingSpinner'
 import { PropertiesPanel } from './PropertiesPanel'
+import { TableOfContents } from './TableOfContents'
 import { BacklinksPanel } from './BacklinksPanel'
 
 // CodeMirror (~200KB+ gzipped with basicSetup/markdown mode/theme) is only
@@ -55,6 +56,7 @@ export function NoteView({ fileId }: { fileId: string }) {
   return (
     <div>
       <PropertiesPanel />
+      <TableOfContents />
       {isReadMode ? (
         <MarkdownReader html={html} currentFileId={fileId} />
       ) : (

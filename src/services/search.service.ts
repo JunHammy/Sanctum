@@ -2,6 +2,7 @@ import MiniSearch from 'minisearch'
 import * as driveService from './drive.service'
 import { extractFrontmatter, slugify } from './markdown.service'
 import { getCachedContent, setCachedContent, getMeta, setMeta } from './cache.service'
+import { extractInlineTags } from '../lib/tag-syntax'
 import type { FileTreeNode } from '../types/vault.types'
 
 export interface SearchDoc {
@@ -165,6 +166,20 @@ export function findWikilinkTargetLine(rawFile: string, heading?: string | null,
   }
 
   return null
+}
+
+// For the Tag Browser's "jump to this tag" click — a tag can appear more
+// than once in the same note (indexed as a single use either way, see
+// tags.service's Set-based dedup), so this deliberately just returns the
+// *first* line it appears on, same "one good match, not every match"
+// convention as findMatchLine/findWikilinkTargetLine above. Returns null
+// for a tag that only exists in frontmatter (nothing inline to jump to) —
+// the note still opens, just at the top instead of a specific line.
+export function findTagLine(rawFile: string, tag: string): number | null {
+  const { content } = extractFrontmatter(rawFile)
+  const lines = content.split('\n')
+  const i = lines.findIndex((line) => extractInlineTags(line).includes(tag))
+  return i === -1 ? null : i
 }
 
 export async function updateIndexForNote(

@@ -1,12 +1,13 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
-import { RefreshCw, FilePlus, FolderPlus } from 'lucide-react'
+import { RefreshCw, FilePlus, FolderPlus, FoldVertical, UnfoldVertical } from 'lucide-react'
 import { useUIStore } from '../../stores/ui.store'
 import { useVaultStore } from '../../stores/vault.store'
 import { useToastStore } from '../../stores/toast.store'
 import { toUserMessage, logError } from '../../lib/error-messages'
+import { collectFolderIds } from '../../lib/vault-tree'
 import { FileTree } from '../sidebar/FileTree'
+import { TagBrowser } from '../sidebar/TagBrowser'
 import { LoadingSpinner } from '../common/LoadingSpinner'
 import { PromptModal } from '../common/PromptModal'
 import type { FileTreeNode } from '../../types/vault.types'
@@ -21,17 +22,30 @@ interface SidebarProps {
 export function Sidebar({ nodes, isLoading, error, onRefresh }: SidebarProps) {
   const sidebarOpen = useUIStore((s) => s.sidebarOpen)
   const closeSidebar = useUIStore((s) => s.closeSidebar)
+  const expandedFolderIds = useUIStore((s) => s.expandedFolderIds)
+  const expandAll = useUIStore((s) => s.expandAll)
+  const collapseAll = useUIStore((s) => s.collapseAll)
   const createNote = useVaultStore((s) => s.createNote)
   const createFolder = useVaultStore((s) => s.createFolder)
   const showToast = useToastStore((s) => s.show)
-  const navigate = useNavigate()
   const [openModal, setOpenModal] = useState<'note' | 'folder' | null>(null)
+
+  const allFolderIds = useMemo(() => collectFolderIds(nodes), [nodes])
+  // A single toggle (rather than two separate buttons) that flips based on
+  // current state — same "smart toggle" pattern as an editor's collapse/
+  // expand-all-folds. Once every folder is expanded, clicking again folds
+  // them back up instead of being a no-op.
+  const allExpanded = allFolderIds.length > 0 && allFolderIds.every((id) => expandedFolderIds.has(id))
+
+  function handleToggleExpandAll() {
+    if (allExpanded) collapseAll()
+    else expandAll(allFolderIds)
+  }
 
   async function handleCreateNote(name: string) {
     setOpenModal(null)
     try {
-      const fileId = await createNote(name)
-      navigate(`/vault/note/${fileId}`)
+      await createNote(name)
       showToast(`Created "${name}"`, 'success')
     } catch (err) {
       logError('sidebar.createNote', err)
@@ -103,6 +117,17 @@ export function Sidebar({ nodes, isLoading, error, onRefresh }: SidebarProps) {
                   </button>
                   <button
                     type="button"
+                    aria-label={allExpanded ? 'Collapse all folders' : 'Expand all folders'}
+                    title={allExpanded ? 'Collapse all folders' : 'Expand all folders'}
+                    className="rounded p-1 hover:opacity-80 disabled:opacity-30"
+                    style={{ color: 'var(--accent-link)' }}
+                    onClick={handleToggleExpandAll}
+                    disabled={allFolderIds.length === 0}
+                  >
+                    {allExpanded ? <FoldVertical size={14} /> : <UnfoldVertical size={14} />}
+                  </button>
+                  <button
+                    type="button"
                     aria-label="Refresh vault"
                     className="rounded p-1 hover:opacity-80 disabled:opacity-50"
                     style={{ color: 'var(--accent-link)' }}
@@ -123,7 +148,12 @@ export function Sidebar({ nodes, isLoading, error, onRefresh }: SidebarProps) {
                   {error}
                 </p>
               )}
-              {!isLoading && !error && <FileTree nodes={nodes} />}
+              {!isLoading && !error && (
+                <>
+                  <FileTree nodes={nodes} />
+                  <TagBrowser />
+                </>
+              )}
             </motion.aside>
           </>
         )}

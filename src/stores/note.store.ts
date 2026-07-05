@@ -3,6 +3,7 @@ import * as driveService from '../services/drive.service'
 import { renderNote, renderBody, serializeFrontmatter } from '../services/markdown.service'
 import { useSearchStore } from './search.store'
 import { useBacklinksStore } from './backlinks.store'
+import { useTagsStore } from './tags.store'
 import { useVaultStore } from './vault.store'
 import { useToastStore } from './toast.store'
 import { toUserMessage, logError } from '../lib/error-messages'
@@ -64,6 +65,13 @@ interface NoteState {
   updateFrontmatterField: (key: string, value: unknown) => void
   removeFrontmatterField: (key: string) => void
   toggleReadMode: () => void
+  // Explicit "go to Read mode" rather than reusing toggleReadMode — jumping
+  // to a search/backlink/tag hit needs to *land* in Read mode (that's where
+  // the flash-highlight lives), not flip whatever mode happened to already
+  // be active. openNote already resets to Read mode on its own, but only
+  // when actually switching notes; jumping to something inside the note
+  // you're *already* viewing doesn't re-trigger openNote at all.
+  enterReadMode: () => void
   saveNote: () => Promise<void>
   undo: () => void
   redo: () => void
@@ -188,6 +196,7 @@ export const useNoteStore = create<NoteState>()((set, get) => ({
   },
 
   toggleReadMode: () => set((s) => ({ isReadMode: !s.isReadMode })),
+  enterReadMode: () => set({ isReadMode: true }),
 
   // Whole-note undo/redo, independent of CodeMirror's per-block history
   // (which resets every time a different block is clicked into — that's
@@ -241,6 +250,7 @@ export const useNoteStore = create<NoteState>()((set, get) => ({
       useBacklinksStore
         .getState()
         .updateForNote(activeNoteId, frontmatterBlock + rawBody, useVaultStore.getState().fileTree)
+      useTagsStore.getState().updateForNote(activeNoteId, frontmatterBlock + rawBody)
     } catch (err) {
       const message = toUserMessage(err, 'Could not save your changes to Google Drive.')
       logError('note.saveNote', err)

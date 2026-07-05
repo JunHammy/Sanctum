@@ -1,5 +1,5 @@
 import { useState, type KeyboardEvent } from 'react'
-import { ChevronDown, ChevronRight, X, Plus } from 'lucide-react'
+import { ChevronRight, X, Plus } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useNoteStore } from '../../stores/note.store'
 
@@ -212,7 +212,13 @@ export function PropertiesPanel() {
         style={{ color: 'var(--text-muted)' }}
         onClick={() => setExpanded((v) => !v)}
       >
-        {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+        <motion.span
+          className="inline-flex shrink-0"
+          animate={{ rotate: expanded ? 90 : 0 }}
+          transition={{ duration: 0.15 }}
+        >
+          <ChevronRight size={12} />
+        </motion.span>
         Properties
       </button>
       <AnimatePresence initial={false}>

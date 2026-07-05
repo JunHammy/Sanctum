@@ -39,6 +39,7 @@ export function MarkdownReader({ html, currentFileId }: MarkdownReaderProps) {
   const isVaultLoading = useVaultStore((s) => s.isLoading)
   const pendingScroll = useNoteStore((s) => s.pendingScroll)
   const setPendingScroll = useNoteStore((s) => s.setPendingScroll)
+  const activeNoteId = useNoteStore((s) => s.activeNoteId)
   const containerRef = useRef<HTMLDivElement>(null)
 
   useImageResolution(containerRef, fileTree, isVaultLoading)
@@ -54,19 +55,25 @@ export function MarkdownReader({ html, currentFileId }: MarkdownReaderProps) {
   }, [])
 
   // Consumes a scroll target set before navigating here — by a search
-  // result (SearchModal) or a cross-note wikilink jump below. The fileId
-  // check is load-bearing, not a formality: pendingScroll gets set before
-  // navigate() runs, so this effect can fire while `html` still belongs to
-  // whatever note was open *before* — comparing against currentFileId
-  // (which only reflects this component's real content once NoteView
-  // stops showing its loading spinner) means a premature firing against
-  // stale content just leaves the target in place instead of consuming it,
-  // so it fires again correctly once the right note's content lands.
+  // result (SearchModal), a cross-note wikilink jump below, or the Tag
+  // Browser. The fileId check is load-bearing, not a formality — but it
+  // compares against note.store's own `activeNoteId`, not the
+  // `currentFileId` *prop* (sourced from the URL param). Those two update
+  // on different clocks: the URL changes the instant navigate() runs, but
+  // `activeNoteId`/`html`/`isLoading` only update together, atomically,
+  // once openNote's fetch actually resolves. Comparing against the prop
+  // meant there was a real window — one render, right after navigating to
+  // a different note — where `currentFileId` already said the new note but
+  // `html` still belonged to the old one; the guard passed anyway, fired
+  // against the wrong (or about-to-unmount) DOM, found nothing, and still
+  // cleared pendingScroll — leaving nothing to trigger the jump once the
+  // real content landed a moment later. activeNoteId can't be "ahead" of
+  // html this way, since they're set in the same set() call inside openNote.
   useEffect(() => {
-    if (!pendingScroll || pendingScroll.fileId !== currentFileId) return
+    if (!pendingScroll || pendingScroll.fileId !== activeNoteId) return
     scrollToLineWithFlash('[data-src-line]', pendingScroll.line)
     setPendingScroll(null)
-  }, [pendingScroll, currentFileId, html, setPendingScroll])
+  }, [pendingScroll, activeNoteId, html, setPendingScroll])
 
   async function jumpToOtherNote(fileId: string, heading: string | null, blockId: string | null) {
     // Fetched fresh, not from the IndexedDB content cache — same reasoning

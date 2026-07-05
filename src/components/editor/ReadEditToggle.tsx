@@ -13,7 +13,15 @@ export function ReadEditToggle() {
       onClick={() => toggleReadModePreservingScroll()}
     >
       {isReadMode ? <Pencil size={14} /> : <Eye size={14} />}
-      {isReadMode ? 'Edit' : 'Read'}
+      {/* "Edit"/"Read" are both 4 characters, but different glyph widths
+          (e.g. narrow "i" vs wider "a") still render at slightly different
+          pixel widths — enough to nudge the divider/avatar/sign-out button
+          next to this in the header on every toggle. A fixed min-width
+          keeps the button's footprint constant regardless of which word is
+          showing. */}
+      <span className="inline-block" style={{ minWidth: '4ch' }}>
+        {isReadMode ? 'Edit' : 'Read'}
+      </span>
     </button>
   )
 }

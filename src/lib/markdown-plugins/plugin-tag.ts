@@ -1,6 +1,5 @@
 import type MarkdownIt from 'markdown-it'
-
-const TAG_PATTERN = /^#([a-zA-Z0-9_-]+)/
+import { TAG_CHARS_PATTERN } from '../tag-syntax'
 
 // Parses inline #tag tokens. Only triggers at the start of a line or after
 // whitespace, so it doesn't fire on things like markdown-it-footnote's
@@ -13,7 +12,7 @@ export function tagPlugin(md: MarkdownIt): void {
     const prevChar = start > 0 ? state.src[start - 1] : ' '
     if (!/\s/.test(prevChar)) return false
 
-    const match = state.src.slice(start).match(TAG_PATTERN)
+    const match = state.src.slice(start).match(TAG_CHARS_PATTERN)
     if (!match) return false
 
     if (!silent) {

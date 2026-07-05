@@ -136,9 +136,16 @@ class SlashMenu {
       row.append(label, detail)
 
       // mousedown (not click) fires before the editor's blur handling would
-      // otherwise steal focus and close the menu first.
+      // otherwise steal focus and close the menu first. stopPropagation is
+      // load-bearing here, not just tidy: this.dom lives on document.body
+      // (see the constructor), outside the block's own DOM subtree, so
+      // without it this event bubbles up to BlockEditor's document-level
+      // "click outside the active block" listener — which would then
+      // deactivate the block (unmounting this very editor) on the same
+      // click that just inserted the snippet.
       row.addEventListener('mousedown', (e) => {
         e.preventDefault()
+        e.stopPropagation()
         this.apply(item)
       })
       this.dom.appendChild(row)

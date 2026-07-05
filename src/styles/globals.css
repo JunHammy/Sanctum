@@ -32,25 +32,31 @@
    neutral off-white/gray; text colors get a light cool-down too so
    nothing looks mismatched against the new backgrounds. Kept the same
    overall Notion-inspired warmth level in the *accents* (links, tags,
-   the yellow highlight marker) — just not in the surfaces themselves. */
+   the yellow highlight marker) — just not in the surfaces themselves.
+   text-secondary/text-muted/border/scrollbar-thumb darkened further after
+   that cooldown read as too washed-out/low-contrast in practice —
+   sidebar labels, folder names, tag pills, and dividers were all fine on
+   paper but hard to actually read on screen. bg/accent colors unchanged;
+   this was specifically a text/chrome contrast problem, not a background
+   or brand-color one. */
 :root[data-theme="light"] {
   --bg-primary: #faf9f7;
   --bg-secondary: #f3f1ed;
-  --bg-tertiary: #e8e6e1;
+  --bg-tertiary: #e2ddd1;
   --bg-code: #f3f1ed;
-  --text-primary: #33322f;
-  --text-secondary: #6f6d68;
-  --text-muted: #8f8b83;
+  --text-primary: #2b2a26;
+  --text-secondary: #524f47;
+  --text-muted: #6e6a61;
   --accent-link: #4f7fa0;
   --accent-tag: #337ea9;
   --accent-heading: #2b2a26;
   --accent-highlight: #fdecc8;
   --flash-highlight: #f5b942;
-  --border: #ddd9d2;
+  --border: #c9c3b6;
   --success: #4a9a52;
   --warning: #d9822b;
   --error: #d94f3e;
-  --scrollbar-thumb: #c9c4ba;
+  --scrollbar-thumb: #b6b0a1;
   --scrollbar-track: transparent;
 }
 

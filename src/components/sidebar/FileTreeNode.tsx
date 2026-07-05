@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ChevronRight, ChevronDown } from 'lucide-react'
+import { ChevronRight } from 'lucide-react'
+import { AnimatePresence, motion } from 'motion/react'
 import { useUIStore } from '../../stores/ui.store'
 import { useVaultStore } from '../../stores/vault.store'
 import { useToastStore } from '../../stores/toast.store'
@@ -27,7 +28,8 @@ interface DragPayload {
 // to remove as well as which to add (Drive files can technically have
 // multiple parents, but Sanctum only ever uses one).
 export function FileTreeNode({ node, depth, parentId }: { node: FileTreeNodeType; depth: number; parentId: string }) {
-  const [expanded, setExpanded] = useState(false)
+  const expanded = useUIStore((s) => s.expandedFolderIds.has(node.id))
+  const toggleFolder = useUIStore((s) => s.toggleFolder)
   const [isDropTarget, setIsDropTarget] = useState(false)
   const navigate = useNavigate()
   const closeSidebar = useUIStore((s) => s.closeSidebar)
@@ -50,7 +52,7 @@ export function FileTreeNode({ node, depth, parentId }: { node: FileTreeNodeType
             color: 'var(--text-primary)',
             background: isDropTarget ? 'var(--bg-tertiary)' : undefined,
           }}
-          onClick={() => setExpanded((v) => !v)}
+          onClick={() => toggleFolder(node.id)}
           onDragOver={(e) => {
             if (!e.dataTransfer.types.includes(DRAG_MIME)) return
             e.preventDefault()
@@ -71,13 +73,30 @@ export function FileTreeNode({ node, depth, parentId }: { node: FileTreeNodeType
               })
           }}
         >
-          {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+          <motion.span
+            className="inline-flex shrink-0"
+            animate={{ rotate: expanded ? 90 : 0 }}
+            transition={{ duration: 0.15 }}
+          >
+            <ChevronRight size={14} />
+          </motion.span>
           <span className="truncate">{node.name}</span>
         </button>
-        {expanded &&
-          node.children.map((child) => (
-            <FileTreeNode key={child.id} node={child} depth={depth + 1} parentId={node.id} />
-          ))}
+        <AnimatePresence initial={false}>
+          {expanded && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.15 }}
+              style={{ overflow: 'hidden' }}
+            >
+              {node.children.map((child) => (
+                <FileTreeNode key={child.id} node={child} depth={depth + 1} parentId={node.id} />
+              ))}
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     )
   }
