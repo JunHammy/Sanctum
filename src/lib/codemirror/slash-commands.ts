@@ -14,6 +14,13 @@ const SNIPPETS: Snippet[] = [
   { label: 'Heading', detail: '##', snippet: '## ', cursorOffset: 3 },
   { label: 'Bullet list', detail: '-', snippet: '- ', cursorOffset: 2 },
   { label: 'Task list', detail: '- [ ]', snippet: '- [ ] ', cursorOffset: 6 },
+  // Inserting just the opening brackets (not a full [[Note]] template) is
+  // deliberate — wikilink-autocomplete.ts's own ViewPlugin independently
+  // watches every document change, so it picks up these freshly-inserted,
+  // still-unclosed brackets in the same dispatch cycle and opens its note
+  // dropdown immediately, same as if they'd been typed by hand.
+  { label: 'Link', detail: '[[Note]]', snippet: '[[', cursorOffset: 2 },
+  { label: 'Embed note', detail: '![[Note]]', snippet: '![[', cursorOffset: 3 },
 ]
 
 // Trigger only at the very start of a line, or right after whitespace —

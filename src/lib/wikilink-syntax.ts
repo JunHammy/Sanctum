@@ -16,19 +16,23 @@ export function parseWikilinkInner(inner: string): ParsedWikilink {
   let blockId = ''
   let alias = ''
 
+  // Splits on the *first* occurrence only (indexOf/slice, not
+  // String.split) — a heading-range embed's heading segment can itself
+  // contain a second `#` (`Section1 to #Section2`), and split('#') would
+  // silently truncate everything after the second one via destructuring.
   if (inner.includes('|')) {
-    const [t, a] = inner.split('|')
-    target = t
-    alias = a ?? ''
+    const idx = inner.indexOf('|')
+    target = inner.slice(0, idx)
+    alias = inner.slice(idx + 1)
   }
   if (target.includes('^')) {
-    const [t, b] = target.split('^')
-    target = t
-    blockId = b ?? ''
+    const idx = target.indexOf('^')
+    blockId = target.slice(idx + 1)
+    target = target.slice(0, idx)
   } else if (target.includes('#')) {
-    const [t, h] = target.split('#')
-    target = t
-    heading = h ?? ''
+    const idx = target.indexOf('#')
+    heading = target.slice(idx + 1)
+    target = target.slice(0, idx)
   }
 
   return { target: target.trim(), heading: heading.trim(), blockId: blockId.trim(), alias: alias.trim() }

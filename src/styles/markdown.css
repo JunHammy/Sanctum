@@ -203,3 +203,49 @@
   color: var(--accent-tag);
   font-size: 0.9em;
 }
+
+/* Dashed border (vs. the callout's solid left-accent) deliberately signals
+   "this content lives elsewhere" rather than looking like a same-note
+   admonition. */
+.markdown-body .transclusion {
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  padding: 0.5em 1em 0.85em;
+  margin: 1em 0;
+  background: var(--bg-tertiary);
+}
+
+.markdown-body .transclusion-source {
+  display: inline-block;
+  font-size: 0.8em;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--text-muted) !important;
+  text-decoration: none;
+  margin-bottom: 0.4em;
+}
+
+.markdown-body .transclusion-source:hover {
+  color: var(--accent-link) !important;
+}
+
+.markdown-body .transclusion-body > :first-child {
+  margin-top: 0;
+}
+
+.markdown-body .transclusion-body > :last-child {
+  margin-bottom: 0;
+}
+
+.markdown-body .transclusion-loading,
+.markdown-body .transclusion-missing,
+.markdown-body .transclusion-error {
+  font-size: 0.9em;
+  font-style: italic;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.markdown-body .transclusion-error {
+  color: var(--error);
+}

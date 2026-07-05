@@ -7,6 +7,7 @@ import { slugify } from '../../services/markdown.service'
 import { findWikilinkTargetLine } from '../../services/search.service'
 import { readFile } from '../../services/drive.service'
 import { useImageResolution } from '../../hooks/useImageResolution'
+import { useTransclusion } from '../../hooks/useTransclusion'
 import { scrollToLineWithFlash, consumePendingScrollAnchor } from '../../lib/scroll-to-line'
 
 const READ_MODE_SELECTOR = '[data-src-line]'
@@ -43,6 +44,7 @@ export function MarkdownReader({ html, currentFileId }: MarkdownReaderProps) {
   const containerRef = useRef<HTMLDivElement>(null)
 
   useImageResolution(containerRef, fileTree, isVaultLoading)
+  useTransclusion(containerRef, fileTree)
 
   // Restores scroll position after switching *into* Read mode from Edit
   // (toggleReadModePreservingScroll in scroll-to-line.ts) — a no-op on a

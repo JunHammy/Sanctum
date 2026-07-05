@@ -7,6 +7,7 @@ import { calloutPlugin } from '../lib/markdown-plugins/plugin-callout'
 import { tagPlugin } from '../lib/markdown-plugins/plugin-tag'
 import { wikilinkPlugin } from '../lib/markdown-plugins/plugin-wikilink'
 import { blockIdPlugin } from '../lib/markdown-plugins/plugin-block-id'
+import { transclusionPlugin } from '../lib/markdown-plugins/plugin-transclusion'
 import { sourceLinePlugin } from '../lib/markdown-plugins/plugin-source-line'
 import { renderMath } from '../lib/katex-setup'
 import hljs from 'highlight.js/lib/core'
@@ -87,6 +88,7 @@ function getRenderer(): MarkdownIt {
       .use(taskLists, { enabled: true }) // - [ ] checkboxes
       .use(calloutPlugin) // > [!TYPE] Title
       .use(blockIdPlugin) // trailing ^block-id marker on a paragraph/list item
+      .use(transclusionPlugin) // ![[Note]], ![[Note#Heading]], ![[Note^block-id]] — embeds a whole paragraph
       .use(tagPlugin) // #tag
       .use(wikilinkPlugin) // [[Note]], [[Note#Heading]], [[Note^block-id]], [[Note|Alias]]
       .use(headingIdPlugin)

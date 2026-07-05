@@ -9,6 +9,9 @@ interface TabsState {
   // back to the bare /vault route), since this store doesn't know about
   // routing.
   closeTab: (fileId: string) => string | null
+  // Drag-and-drop reordering — moves fileId to sit immediately before or
+  // after targetId.
+  moveTab: (fileId: string, targetId: string, side: 'before' | 'after') => void
 }
 
 // Deliberately in-memory only (no persistence) for v1 — a fresh page load
@@ -33,5 +36,17 @@ export const useTabsStore = create<TabsState>()((set, get) => ({
     set({ openFileIds: next })
     if (next.length === 0) return null
     return next[Math.max(0, index - 1)]
+  },
+
+  moveTab: (fileId, targetId, side) => {
+    set((s) => {
+      if (fileId === targetId) return s
+      const withoutDragged = s.openFileIds.filter((id) => id !== fileId)
+      const targetIndex = withoutDragged.indexOf(targetId)
+      if (targetIndex === -1) return s
+      const insertAt = side === 'before' ? targetIndex : targetIndex + 1
+      const next = [...withoutDragged.slice(0, insertAt), fileId, ...withoutDragged.slice(insertAt)]
+      return { openFileIds: next }
+    })
   },
 }))

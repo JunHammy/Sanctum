@@ -1,9 +1,11 @@
-import type { MouseEvent } from 'react'
+import { useState, type DragEvent, type MouseEvent } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { X } from 'lucide-react'
 import { useTabsStore } from '../../stores/tabs.store'
 import { useVaultStore } from '../../stores/vault.store'
 import { findFileName } from '../../lib/vault-tree'
+
+const DRAG_MIME = 'application/x-sanctum-tab'
 
 // Sits above ContentPane (not spanning the sidebar), same placement
 // convention as a browser or editor tab strip. Hidden entirely with no
@@ -12,9 +14,12 @@ import { findFileName } from '../../lib/vault-tree'
 export function TabBar() {
   const openFileIds = useTabsStore((s) => s.openFileIds)
   const closeTab = useTabsStore((s) => s.closeTab)
+  const moveTab = useTabsStore((s) => s.moveTab)
   const fileTree = useVaultStore((s) => s.fileTree)
   const navigate = useNavigate()
   const { fileId: activeFileId } = useParams<{ fileId?: string }>()
+  const [dragOverId, setDragOverId] = useState<string | null>(null)
+  const [dropSide, setDropSide] = useState<'before' | 'after' | null>(null)
 
   if (openFileIds.length === 0) return null
 
@@ -27,6 +32,26 @@ export function TabBar() {
     if (fileId === activeFileId) {
       navigate(nextId ? `/vault/note/${nextId}` : '/vault')
     }
+  }
+
+  // Same "which half of the target am I over" technique BlockEditor.tsx
+  // uses for reordering blocks, just horizontal (clientX/midpoint width)
+  // instead of vertical — an insertion-point line reads more clearly for
+  // reordering than highlighting the whole target tab does.
+  function handleDragOver(e: DragEvent, id: string) {
+    if (!e.dataTransfer.types.includes(DRAG_MIME)) return
+    e.preventDefault()
+    const rect = e.currentTarget.getBoundingClientRect()
+    setDragOverId(id)
+    setDropSide(e.clientX < rect.left + rect.width / 2 ? 'before' : 'after')
+  }
+
+  function handleDrop(e: DragEvent, id: string) {
+    if (!e.dataTransfer.types.includes(DRAG_MIME)) return
+    e.preventDefault()
+    setDragOverId(null)
+    const draggedId = e.dataTransfer.getData(DRAG_MIME)
+    if (draggedId && draggedId !== id && dropSide) moveTab(draggedId, id, dropSide)
   }
 
   return (
@@ -42,16 +67,29 @@ export function TabBar() {
             key={id}
             role="button"
             tabIndex={0}
+            draggable
             aria-current={isActive || undefined}
             onClick={() => navigate(`/vault/note/${id}`)}
             onKeyDown={(e) => {
               if (e.key === 'Enter') navigate(`/vault/note/${id}`)
             }}
+            onDragStart={(e) => {
+              e.dataTransfer.setData(DRAG_MIME, id)
+              e.dataTransfer.effectAllowed = 'move'
+            }}
+            onDragOver={(e) => handleDragOver(e, id)}
+            onDragLeave={() => setDragOverId((current) => (current === id ? null : current))}
+            onDrop={(e) => handleDrop(e, id)}
             className="flex shrink-0 cursor-pointer items-center gap-2 rounded-md py-1.5 pr-1.5 pl-3 text-sm transition-colors"
             style={{
               background: isActive ? 'var(--bg-primary)' : 'var(--bg-tertiary)',
               color: isActive ? 'var(--text-primary)' : 'var(--text-secondary)',
               boxShadow: isActive ? '0 1px 3px rgba(0,0,0,0.15)' : undefined,
+              // A thin insertion-point line on whichever side the dragged
+              // tab would land, rather than highlighting the whole target
+              // tab — reads more clearly as "it goes here" for reordering.
+              borderLeft: `2px solid ${dragOverId === id && dropSide === 'before' ? 'var(--accent-link)' : 'transparent'}`,
+              borderRight: `2px solid ${dragOverId === id && dropSide === 'after' ? 'var(--accent-link)' : 'transparent'}`,
             }}
           >
             <span className="max-w-40 truncate">{name}</span>

@@ -2,6 +2,7 @@ import { memo, useRef, type DragEvent } from 'react'
 import { ChevronUp, ChevronDown, GripVertical, Plus, Trash2 } from 'lucide-react'
 import { useVaultStore } from '../../stores/vault.store'
 import { useImageResolution } from '../../hooks/useImageResolution'
+import { useTransclusion } from '../../hooks/useTransclusion'
 import { useIsTouchDevice } from '../../hooks/useIsTouchDevice'
 import { renderBody } from '../../services/markdown.service'
 import { MarkdownEditor } from './MarkdownEditor'
@@ -70,6 +71,7 @@ export const Block = memo(function Block({
   const html = block.rawText.trim() ? renderBody(block.rawText) : EMPTY_PLACEHOLDER
 
   useImageResolution(containerRef, fileTree, isVaultLoading)
+  useTransclusion(containerRef, fileTree)
 
   return (
     <div
