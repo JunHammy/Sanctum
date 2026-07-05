@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Menu, LogOut, Sun, Moon, History, Search } from 'lucide-react'
+import { Menu, LogOut, Sun, Moon, History, Search, RefreshCw } from 'lucide-react'
 import { useAuthStore } from '../../stores/auth.store'
 import { useUIStore } from '../../stores/ui.store'
 import { useNoteStore } from '../../stores/note.store'
@@ -18,6 +18,8 @@ interface HeaderProps {
 export function Header({ onOpenSearch }: HeaderProps) {
   const user = useAuthStore((s) => s.user)
   const signOut = useAuthStore((s) => s.signOut)
+  const signIn = useAuthStore((s) => s.signIn)
+  const needsReconnect = useAuthStore((s) => s.needsReconnect)
   const toggleSidebar = useUIStore((s) => s.toggleSidebar)
   const theme = useUIStore((s) => s.theme)
   const toggleTheme = useUIStore((s) => s.toggleTheme)
@@ -66,6 +68,23 @@ export function Header({ onOpenSearch }: HeaderProps) {
       </div>
 
       <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+        {needsReconnect && (
+          // Background silent token refresh always fails here (Google's
+          // client falls back to a popup for it, and a background timer
+          // isn't a user gesture, so browsers block it) — this is the
+          // one-click fix, clicked by an actual person, so the popup this
+          // opens is allowed. Left visible until clicked (not a toast that
+          // disappears) since it stays actionable for several minutes.
+          <button
+            type="button"
+            className="flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-sm hover:opacity-80"
+            style={{ borderColor: 'var(--warning)', color: 'var(--warning)' }}
+            onClick={() => signIn()}
+          >
+            <RefreshCw size={14} />
+            <span className="hidden sm:inline">Reconnect</span>
+          </button>
+        )}
         {activeNoteId && (
           <>
             <span className="hidden text-xs sm:inline" style={{ color: 'var(--text-muted)' }}>

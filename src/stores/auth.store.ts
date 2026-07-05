@@ -12,6 +12,7 @@ const REQUIRED_SCOPE = 'https://www.googleapis.com/auth/drive'
 
 interface AuthState {
   token: string | null
+  refreshToken: string | null
   user: AuthUser | null
   tokenExpiresAt: number | null
   isAuthenticated: boolean
@@ -25,6 +26,13 @@ interface AuthState {
   // route, so nothing can fire a Drive API call with a token that just
   // hasn't loaded yet.
   hasHydrated: boolean
+  // True once a background refresh-token renewal has failed and hasn't
+  // been resolved by a fresh sign-in yet — e.g. the refresh token was
+  // revoked externally, or (while this app is unverified/in Testing status)
+  // Google's 7-day refresh-token expiry was hit. A real but rare edge case
+  // now, not the every-hour default it used to be back when background
+  // renewal went through a popup that browsers always blocked.
+  needsReconnect: boolean
   signIn: () => Promise<void>
   signOut: () => void
   scheduleRefresh: () => void
@@ -48,18 +56,18 @@ export const useAuthStore = create<AuthState>()(
   persist(
     (set, get) => ({
       token: null,
+      refreshToken: null,
       user: null,
       tokenExpiresAt: null,
       isAuthenticated: false,
       error: null,
       hasHydrated: false,
+      needsReconnect: false,
 
       signIn: async () => {
         set({ error: null })
         try {
-          const { accessToken, expiresIn } = await authService.requestAccessToken()
-          // The scope check inside scheduleRefresh only guards *silent*
-          // renewal — the interactive sign-in itself was never verified.
+          const { accessToken, refreshToken, expiresIn } = await authService.signIn()
           // Google's consent screen leaves the Drive-access checkbox
           // unchecked by default while Sanctum is an unverified app
           // requesting a sensitive scope, so it's easy to click Continue
@@ -76,10 +84,12 @@ export const useAuthStore = create<AuthState>()(
           const user = await authService.fetchUserInfo(accessToken)
           set({
             token: accessToken,
+            refreshToken,
             user,
             tokenExpiresAt: Date.now() + expiresIn * 1000,
             isAuthenticated: true,
             error: null,
+            needsReconnect: false,
           })
           get().scheduleRefresh()
         } catch (err) {
@@ -92,9 +102,16 @@ export const useAuthStore = create<AuthState>()(
 
       signOut: () => {
         clearRefreshTimer()
-        const token = get().token
-        if (token) authService.revokeToken(token)
-        set({ token: null, user: null, tokenExpiresAt: null, isAuthenticated: false })
+        const refreshToken = get().refreshToken
+        if (refreshToken) authService.revokeToken(refreshToken)
+        set({
+          token: null,
+          refreshToken: null,
+          user: null,
+          tokenExpiresAt: null,
+          isAuthenticated: false,
+          needsReconnect: false,
+        })
         // Otherwise a note that failed to load under the old session (e.g.
         // an expired token) leaves behind a stale error + activeNoteId that
         // survives the sign-out/sign-in cycle untouched, silently blocking
@@ -109,42 +126,43 @@ export const useAuthStore = create<AuthState>()(
 
         const delay = Math.max(0, tokenExpiresAt - Date.now() - REFRESH_BUFFER_MS)
         refreshTimer = setTimeout(async () => {
+          const refreshToken = get().refreshToken
+          if (!refreshToken) return
           try {
-            const { accessToken, expiresIn } = await authService.requestAccessToken({ silent: true })
-            // Google can report success while quietly downgrading the scope
-            // for a sensitive permission like full Drive access, since it
-            // isn't reliably re-granted without an interactive consent
-            // screen — swapping in a token like that would silently break
-            // every Drive call. Verify before trusting it.
-            const hasScope = await authService.tokenHasScope(accessToken, REQUIRED_SCOPE)
-            if (!hasScope) {
-              // Leave the current (still technically valid) token in place
-              // rather than replace it with a broken one. If it's genuinely
-              // near expiry, the reactive 401 → sign-out path still covers
-              // that — this just declines to make things worse. No toast:
-              // this is a deliberate silent recovery, not a user-facing
-              // failure — but still worth a log line for production tracing.
-              logError('auth.scheduleRefresh', new Error('Silent refresh returned a scope-downgraded token; kept existing token'))
-              return
-            }
+            // A plain background POST through the Worker proxy — no popup,
+            // no iframe, nothing for a browser popup-blocker to catch. This
+            // is what makes this renewal actually reliable, unlike the old
+            // GIS silent-refresh-via-popup attempt it replaces (which
+            // failed every time, since a background setTimeout is never a
+            // user gesture).
+            const { accessToken, expiresIn } = await authService.refreshAccessToken(refreshToken)
             set({ token: accessToken, tokenExpiresAt: Date.now() + expiresIn * 1000 })
             get().scheduleRefresh()
           } catch (err) {
-            // Silent renewal itself failing (e.g. user revoked access
-            // elsewhere, or offline) — leave the current token in place;
-            // the reactive 401 → sign-out path covers genuine expiry.
+            // A real but rare failure now (refresh token revoked
+            // externally, or its 7-day expiry hit while this app is
+            // unverified/in Testing status) — leave the current token in
+            // place and let the user reconnect with one click instead of
+            // silently doing nothing until it expires.
             logError('auth.scheduleRefresh', err)
+            set({ needsReconnect: true })
+            useToastStore.getState().show('Your session needs a quick reconnect to keep syncing — click "Reconnect" up top.', 'info')
           }
         }, delay)
       },
     }),
     {
       // sessionStorage (not localStorage): the token shouldn't outlive the
-      // browser tab, but should survive a page reload within it.
+      // browser tab, but should survive a page reload within it. The
+      // refresh token gets the same tab-scoped lifetime as the access
+      // token, deliberately — it's the same security posture as before,
+      // just fixing the *within-a-session* renewal reliability, not
+      // extending how long a signed-in session survives closing the tab.
       name: 'sanctum-auth',
       storage: createJSONStorage(() => sessionStorage),
       partialize: (state) => ({
         token: state.token,
+        refreshToken: state.refreshToken,
         user: state.user,
         tokenExpiresAt: state.tokenExpiresAt,
         isAuthenticated: state.isAuthenticated,
@@ -156,6 +174,7 @@ export const useAuthStore = create<AuthState>()(
         if (state) {
           if (state.tokenExpiresAt && state.tokenExpiresAt < Date.now()) {
             state.token = null
+            state.refreshToken = null
             state.user = null
             state.tokenExpiresAt = null
             state.isAuthenticated = false

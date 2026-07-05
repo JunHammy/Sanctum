@@ -1,5 +1,12 @@
 export const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID
 
+// A small stateless Cloudflare Worker (see worker/) that holds the OAuth
+// client_secret server-side and does nothing else — Google's token
+// endpoint requires the secret for the authorization-code/refresh-token
+// exchange even with PKCE, and a secret can't live in a public frontend
+// bundle. Everything else about the auth flow runs client-side as before.
+export const AUTH_PROXY_URL = import.meta.env.VITE_AUTH_PROXY_URL
+
 // Full Drive access, not the narrower drive.file: the app needs to see
 // files added to the vault folder from outside itself (Drive web UI, phone,
 // desktop sync), which drive.file's per-file-grant model can't support.
