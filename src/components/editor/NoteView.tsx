@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect } from 'react'
 import { useNote } from '../../hooks/useNote'
 import { useKeyboardShortcut } from '../../hooks/useKeyboard'
 import { useNoteStore } from '../../stores/note.store'
+import { useTabsStore } from '../../stores/tabs.store'
 import { toggleReadModePreservingScroll } from '../../lib/scroll-to-line'
 import { loadBlockEditor } from '../../lib/prefetch-block-editor'
 import { MarkdownReader } from './MarkdownReader'
@@ -33,6 +34,15 @@ export function NoteView({ fileId }: { fileId: string }) {
   useKeyboardShortcut('e', () => toggleReadModePreservingScroll(), { ctrl: true })
   useKeyboardShortcut('z', () => undo(), { ctrl: true })
   useKeyboardShortcut('z', () => redo(), { ctrl: true, shift: true })
+
+  // Every way of opening a note (sidebar click, backlink, tag jump,
+  // wikilink, search result, quick switcher) already funnels through this
+  // component mounting/updating with a fileId — registering it here once
+  // is what keeps the tab bar in sync everywhere, without needing every
+  // individual navigate() call site to also know about tabs.
+  useEffect(() => {
+    useTabsStore.getState().openTab(fileId)
+  }, [fileId])
 
   // AppShell already kicks this prefetch off the moment the authenticated
   // vault shell mounts (before any note is even opened) — this is a

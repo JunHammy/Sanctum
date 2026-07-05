@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { Header } from './Header'
 import { Sidebar } from './Sidebar'
+import { TabBar } from './TabBar'
 import { ContentPane } from './ContentPane'
 import { QuickSwitcher } from '../search/QuickSwitcher'
 import { SearchModal } from '../search/SearchModal'
@@ -42,7 +43,10 @@ export function AppShell({ fileTree, isLoading, error, onRefresh, children }: Ap
       <Header onOpenSearch={() => setSearchOpen(true)} />
       <div className="flex flex-1 overflow-hidden">
         <Sidebar nodes={fileTree} isLoading={isLoading} error={error} onRefresh={onRefresh} />
-        <ContentPane>{children}</ContentPane>
+        <div className="flex flex-1 flex-col overflow-hidden">
+          <TabBar />
+          <ContentPane>{children}</ContentPane>
+        </div>
       </div>
       <QuickSwitcher isOpen={quickSwitcherOpen} onClose={() => setQuickSwitcherOpen(false)} />
       <SearchModal isOpen={searchOpen} onClose={() => setSearchOpen(false)} />
