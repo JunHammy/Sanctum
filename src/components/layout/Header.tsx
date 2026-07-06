@@ -1,10 +1,11 @@
 import { useState } from 'react'
-import { Menu, LogOut, Sun, Moon, History, Search, RefreshCw } from 'lucide-react'
+import { Menu, LogOut, Sun, Moon, History, Search, RefreshCw, Download } from 'lucide-react'
 import { useAuthStore } from '../../stores/auth.store'
 import { useUIStore } from '../../stores/ui.store'
 import { useNoteStore } from '../../stores/note.store'
 import { ReadEditToggle } from '../editor/ReadEditToggle'
 import { RevisionsPanel } from '../editor/RevisionsPanel'
+import { ExportMenu } from '../editor/ExportMenu'
 
 interface HeaderProps {
   onOpenSearch: () => void
@@ -27,6 +28,7 @@ export function Header({ onOpenSearch }: HeaderProps) {
   const isDirty = useNoteStore((s) => s.isDirty)
   const isSaving = useNoteStore((s) => s.isSaving)
   const [revisionsOpen, setRevisionsOpen] = useState(false)
+  const [exportOpen, setExportOpen] = useState(false)
 
   return (
     <header
@@ -100,6 +102,16 @@ export function Header({ onOpenSearch }: HeaderProps) {
             >
               <History size={16} />
             </button>
+            <button
+              type="button"
+              aria-label="Export note"
+              title="Export note"
+              className="rounded p-1.5 hover:opacity-80"
+              style={{ color: 'var(--text-secondary)' }}
+              onClick={() => setExportOpen(true)}
+            >
+              <Download size={16} />
+            </button>
             <ReadEditToggle />
             <span className="hidden h-5 w-px sm:inline" style={{ background: 'var(--border)' }} aria-hidden="true" />
           </>
@@ -131,7 +143,10 @@ export function Header({ onOpenSearch }: HeaderProps) {
         </button>
       </div>
       {activeNoteId && (
-        <RevisionsPanel fileId={activeNoteId} isOpen={revisionsOpen} onClose={() => setRevisionsOpen(false)} />
+        <>
+          <RevisionsPanel fileId={activeNoteId} isOpen={revisionsOpen} onClose={() => setRevisionsOpen(false)} />
+          <ExportMenu fileId={activeNoteId} isOpen={exportOpen} onClose={() => setExportOpen(false)} />
+        </>
       )}
     </header>
   )

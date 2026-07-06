@@ -3,6 +3,8 @@ import * as driveService from './drive.service'
 import { extractFrontmatter, slugify } from './markdown.service'
 import { getCachedContent, setCachedContent, getMeta, setMeta } from './cache.service'
 import { extractInlineTags } from '../lib/tag-syntax'
+import { resolveWikilink } from '../lib/wikilink-resolver'
+import { parseEmbedLine, extractSection } from '../lib/transclusion'
 import type { FileTreeNode } from '../types/vault.types'
 
 export interface SearchDoc {
@@ -55,6 +57,83 @@ export function toDoc(id: string, name: string, raw: string): SearchDoc {
   return { id, title, content, tags, excerpt }
 }
 
+// Caps how deep a chain of embeds-within-embeds gets expanded for search —
+// guards against pathological nesting, on top of the visited-set cycle
+// guard below (which alone would already stop a genuine A-embeds-B-embeds-A
+// loop, but not an accidentally very long linear chain).
+const MAX_EMBED_DEPTH = 4
+
+// Same cache-or-fetch as buildIndex's own loop below, just generalized so
+// expandEmbeds can pull in a note *other* than the one currently being
+// indexed — reuses the same cache.service store, so a note that's already
+// being indexed in this same run (or was on a previous run) doesn't cost a
+// second network fetch just because something else embeds it too.
+async function resolveContentForIndex(fileId: string, fileTree: FileTreeNode[]): Promise<string | null> {
+  const file = flattenFiles(fileTree).find((f) => f.id === fileId)
+  if (!file) return null
+  const cached = await getCachedContent(fileId)
+  if (cached && file.modifiedTime && cached.modifiedTime === file.modifiedTime) return cached.raw
+  try {
+    const raw = await driveService.readFile(fileId)
+    if (file.modifiedTime) await setCachedContent(fileId, { raw, modifiedTime: file.modifiedTime })
+    return raw
+  } catch {
+    return null
+  }
+}
+
+// Makes an embedded note's own words show up when searching the note that
+// embeds it — otherwise a `![[Source]]` line only contributes the target's
+// *name* to the index, not the actual content someone would search for.
+// `visited` (seeded with the indexing note's own id, see toDocWithEmbeds)
+// is what stops a genuine A-embeds-B-embeds-A cycle from recursing forever;
+// MAX_EMBED_DEPTH is a second, coarser backstop against a long linear chain.
+async function expandEmbeds(
+  content: string,
+  fileTree: FileTreeNode[],
+  visited: Set<string>,
+  depth: number,
+): Promise<string> {
+  if (depth >= MAX_EMBED_DEPTH) return content
+  const lines = content.split('\n')
+  const expanded = await Promise.all(
+    lines.map(async (line) => {
+      const parsed = parseEmbedLine(line)
+      if (!parsed) return line
+      const fileId = resolveWikilink(parsed.target, fileTree)
+      if (!fileId || visited.has(fileId)) return line
+      const raw = await resolveContentForIndex(fileId, fileTree)
+      if (raw === null) return line
+      const { content: targetContent } = extractFrontmatter(raw)
+      const section =
+        parsed.heading || parsed.blockId
+          ? extractSection(targetContent, parsed.heading, parsed.blockId, parsed.headingEnd)
+          : targetContent
+      if (section === null) return line
+      return expandEmbeds(section, fileTree, new Set(visited).add(fileId), depth + 1)
+    }),
+  )
+  return expanded.join('\n')
+}
+
+// Async counterpart to toDoc, used everywhere a fileTree is available (i.e.
+// everywhere except nowhere — kept toDoc itself separate/sync since it has
+// no need for one). Title/tags/excerpt stay based on the note's *own* text
+// (excerpt in particular — a search result's preview snippet should reflect
+// what's actually in that note, not a paragraph pulled in from elsewhere);
+// only `content` (what's actually tokenized/matched against) gets embeds
+// expanded into it.
+export async function toDocWithEmbeds(
+  id: string,
+  name: string,
+  raw: string,
+  fileTree: FileTreeNode[],
+): Promise<SearchDoc> {
+  const doc = toDoc(id, name, raw)
+  doc.content = await expandEmbeds(doc.content, fileTree, new Set([id]), 0)
+  return doc
+}
+
 function upsertDoc(index: MiniSearch<SearchDoc>, doc: SearchDoc) {
   if (index.has(doc.id)) index.discard(doc.id)
   index.add(doc)
@@ -92,7 +171,7 @@ export async function buildIndex(
   for (const file of files) {
     const cached = await getCachedContent(file.id)
     if (cached && file.modifiedTime && cached.modifiedTime === file.modifiedTime) {
-      upsertDoc(index, toDoc(file.id, file.name, cached.raw))
+      upsertDoc(index, await toDocWithEmbeds(file.id, file.name, cached.raw, fileTree))
     } else {
       toFetch.push(file)
     }
@@ -105,7 +184,7 @@ export async function buildIndex(
         try {
           const raw = await driveService.readFile(file.id)
           if (file.modifiedTime) await setCachedContent(file.id, { raw, modifiedTime: file.modifiedTime })
-          upsertDoc(index, toDoc(file.id, file.name, raw))
+          upsertDoc(index, await toDocWithEmbeds(file.id, file.name, raw, fileTree))
         } catch {
           // A single note failing to fetch (e.g. a transient auth hiccup
           // mid-index) shouldn't abort indexing the rest of the vault.
@@ -187,9 +266,10 @@ export async function updateIndexForNote(
   fileId: string,
   fileName: string,
   raw: string,
+  fileTree: FileTreeNode[],
 ): Promise<MiniSearch<SearchDoc>> {
   const index = existing ?? createIndex()
-  upsertDoc(index, toDoc(fileId, fileName, raw))
+  upsertDoc(index, await toDocWithEmbeds(fileId, fileName, raw, fileTree))
   await persist(index)
   return index
 }

@@ -54,9 +54,10 @@ export const useSearchStore = create<SearchState>()((set, get) => ({
   },
 
   updateIndexForNote: async (fileId, raw) => {
-    const name = findFileName(useVaultStore.getState().fileTree, fileId) ?? fileId
+    const fileTree = useVaultStore.getState().fileTree
+    const name = findFileName(fileTree, fileId) ?? fileId
     try {
-      const index = await searchService.updateIndexForNote(get().index, fileId, name, raw)
+      const index = await searchService.updateIndexForNote(get().index, fileId, name, raw, fileTree)
       set({ index })
     } catch {
       // A failed incremental update just means this one note's new content

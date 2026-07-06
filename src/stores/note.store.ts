@@ -259,14 +259,16 @@ export const useNoteStore = create<NoteState>()((set, get) => ({
     }
   },
 
-  // Called on sign-out. This store is a global singleton independent of
-  // React's component tree, so it otherwise survives a sign-out/sign-in
-  // cycle untouched — including a stale `error` from a failed load and an
-  // `activeNoteId` still pointing at that same note. Without this,
-  // re-clicking the same note after signing back in with a fresh token
-  // would silently do nothing: openNote's caller only refetches when
-  // `fileId !== activeNoteId`, and that guard was still satisfied by the
-  // leftover id from before, so the old error just sat there forever.
+  // Called on sign-out, and by VaultRoute whenever the URL has no fileId
+  // (no note open — e.g. after closing the last tab). This store is a
+  // global singleton independent of React's component tree, so it
+  // otherwise survives untouched — including a stale `error` from a failed
+  // load and an `activeNoteId` still pointing at a note that isn't open
+  // anymore. On sign-out specifically, without this, re-clicking the same
+  // note after signing back in with a fresh token would silently do
+  // nothing: openNote's caller only refetches when `fileId !== activeNoteId`,
+  // and that guard was still satisfied by the leftover id from before, so
+  // the old error just sat there forever.
   reset: () => {
     if (autoSaveTimer) clearTimeout(autoSaveTimer)
     pendingUndoSnapshot = null

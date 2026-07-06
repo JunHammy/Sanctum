@@ -1,26 +1,5 @@
 import type MarkdownIt from 'markdown-it'
-import { parseWikilinkInner } from '../wikilink-syntax'
-
-const EMBED_PATTERN = /^!\[\[([^\]]+)\]\]$/
-// Optional heading-range extension: `![[Note#Section1..#Section2]]`
-// embeds everything from Section1 through the end of Section2's own
-// section, instead of just Section1 alone. `..` rather than a word like
-// "to" — a symbol essentially never collides with real heading text,
-// where a common English word could. The `#` before Section2 is what lets
-// the editor's autocomplete (wikilink-autocomplete.ts) re-trigger heading
-// suggestions the same way it does for the first heading — it just keys
-// off "another # appeared," regardless of what precedes it. Greedy `.*`
-// for the first group so a heading containing ".." itself (unlikely, but
-// symmetric with the old word-based version) still splits at the last
-// occurrence.
-const RANGE_PATTERN = /^(.*)\.\.#(.*)$/
-
-interface TransclusionMeta {
-  target: string
-  heading: string
-  headingEnd: string
-  blockId: string
-}
+import { parseEmbedLine, type ParsedEmbed } from '../transclusion'
 
 // Parses a paragraph whose *entire* content is `![[Note]]` / `![[Note#Heading]]`
 // / `![[Note^block-id]]` — must be on its own line, same as Obsidian (an
@@ -40,16 +19,11 @@ export function transclusionPlugin(md: MarkdownIt): void {
       const inline = tokens[i + 1]
       if (!inline || inline.type !== 'inline') continue
 
-      const match = EMBED_PATTERN.exec(inline.content.trim())
-      if (!match) continue
-
-      const { target, heading, blockId } = parseWikilinkInner(match[1])
-      const rangeMatch = heading ? RANGE_PATTERN.exec(heading) : null
-      const headingStart = rangeMatch ? rangeMatch[1].trim() : heading
-      const headingEnd = rangeMatch ? rangeMatch[2].trim() : ''
+      const parsed = parseEmbedLine(inline.content)
+      if (!parsed) continue
 
       const embedToken = new state.Token('transclusion', 'div', 0)
-      embedToken.meta = { target, heading: headingStart, headingEnd, blockId } satisfies TransclusionMeta
+      embedToken.meta = parsed satisfies ParsedEmbed
       embedToken.block = true
       // Carries the original paragraph's line-range/nesting level forward —
       // sourceLinePlugin (runs later, after 'inline') stamps data-src-line
@@ -67,7 +41,7 @@ export function transclusionPlugin(md: MarkdownIt): void {
 
   md.renderer.rules.transclusion = (tokens, idx) => {
     const token = tokens[idx]
-    const { target, heading, headingEnd, blockId } = token.meta as TransclusionMeta
+    const { target, heading, headingEnd, blockId } = token.meta as ParsedEmbed
     const headingAttr = heading ? ` data-heading="${md.utils.escapeHtml(heading)}"` : ''
     // data-heading-end only feeds useTransclusion's own section-extraction
     // — the header link below deliberately omits it, since "jump to the

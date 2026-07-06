@@ -1,4 +1,34 @@
 import { slugify } from '../services/markdown.service'
+import { parseWikilinkInner } from './wikilink-syntax'
+
+const EMBED_PATTERN = /^!\[\[([^\]]+)\]\]$/
+// Optional heading-range extension: `![[Note#Section1..#Section2]]` embeds
+// everything from Section1 through the end of Section2's own section. `..`
+// rather than a word like "to" — a symbol essentially never collides with
+// real heading text, where a common English word could.
+const RANGE_PATTERN = /^(.*)\.\.#(.*)$/
+
+export interface ParsedEmbed {
+  target: string
+  heading: string
+  headingEnd: string
+  blockId: string
+}
+
+// Parses a line that is *entirely* `![[Target]]` / `![[Target#Heading]]` /
+// `![[Target#Heading1..#Heading2]]` / `![[Target^block-id]]` — shared by
+// plugin-transclusion.ts (rendering) and search.service.ts (indexing
+// embedded content into the note that embeds it), so both agree on exactly
+// what counts as an embed line.
+export function parseEmbedLine(line: string): ParsedEmbed | null {
+  const match = EMBED_PATTERN.exec(line.trim())
+  if (!match) return null
+  const { target, heading, blockId } = parseWikilinkInner(match[1])
+  const rangeMatch = heading ? RANGE_PATTERN.exec(heading) : null
+  const headingStart = rangeMatch ? rangeMatch[1].trim() : heading
+  const headingEnd = rangeMatch ? rangeMatch[2].trim() : ''
+  return { target, heading: headingStart, headingEnd, blockId }
+}
 
 function findHeadingLine(lines: string[], slug: string, afterIdx = -1): number {
   return lines.findIndex((line, i) => {

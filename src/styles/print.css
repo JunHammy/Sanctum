@@ -1,0 +1,118 @@
+/* PDF export print stylesheet (src/services/export.service.ts). html2pdf
+   rasterizes the export container via html2canvas — the browser's own
+   @media print pipeline never runs — so this scopes a light, print-
+   friendly palette directly onto the container itself instead, regardless
+   of the app's current (possibly dark) theme. */
+.pdf-export {
+  --bg-primary: #faf9f7;
+  --bg-secondary: #f3f1ed;
+  --bg-tertiary: #e2ddd1;
+  --bg-code: #f3f1ed;
+  --text-primary: #2b2a26;
+  --text-secondary: #524f47;
+  --text-muted: #6e6a61;
+  --accent-link: #4f7fa0;
+  --accent-tag: #337ea9;
+  --accent-heading: #2b2a26;
+  --accent-highlight: #fdecc8;
+  --border: #c9c3b6;
+  --success: #4a9a52;
+  --warning: #d9822b;
+  --error: #d94f3e;
+
+  width: 700px;
+  padding: 32px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: 'Inter', system-ui, 'Segoe UI', Roboto, sans-serif;
+}
+
+.pdf-export img {
+  max-width: 100%;
+}
+
+/* html2canvas's manual text-rendering pipeline computes each glyph's own
+   baseline/underline offset from font metrics, and for a custom web font
+   (Inter) it consistently gets that wrong enough that any underline —
+   whether a real text-decoration or a border-bottom standing in for one —
+   lands roughly through the middle of the text instead of below it,
+   reading as a strikethrough (confirmed in a real export: every wikilink,
+   tag, and external link came out struck through). Dropping the underline
+   entirely for the export is the reliable fix; color alone still reads as
+   a link. `!important` since these match markdown.css's own selectors on
+   specificity, so which one wins would otherwise depend on stylesheet
+   import order. */
+.pdf-export a,
+.pdf-export .wikilink {
+  text-decoration: none !important;
+  border-bottom: none !important;
+}
+
+/* Canvas has no native text-decoration primitive at all — html2canvas has
+   to hand-draw the line itself, and confirmed upstream reports (both a
+   silent no-render and a badly-misplaced line depending on version/font)
+   mean this is a fundamentally unreliable feature to depend on for export,
+   not something a CSS override can fix (an explicit `text-decoration:
+   line-through !important` rule here made no visible difference in a real
+   export). Faded/muted text instead of an actual line sidesteps the
+   problem entirely — it's a real color/opacity change, which Canvas
+   renders the same way it already reliably renders every other color in
+   this document, not a hand-drawn line. Reads slightly different from
+   markdown.css's plain ~~strikethrough~~ in the live app, but visibly and
+   correctly conveys "struck through," which the line attempt didn't. */
+.pdf-export s {
+  text-decoration: none !important;
+  opacity: 0.55;
+}
+
+/* border-radius is a long-documented html2canvas weak spot across many
+   element types at once — not just inline ones (even a plain <img>'s
+   border-radius is known to silently not apply) — so rather than fixing
+   mark/code/img/callout one at a time, this disables it everywhere in the
+   export at once. Purely cosmetic (square corners instead of rounded) —
+   nothing here depends on the radius actually rendering. */
+.pdf-export * {
+  border-radius: 0 !important;
+}
+
+/* html2canvas can't render native list-style markers at all (see the
+   addExplicitListMarkers() comment in export.service.ts, which injects
+   real text markers before capture instead) — list-style:none here stops
+   the browser's own bullet/number from *also* trying to render, which
+   would otherwise show up doubled. The padding-left is what re-creates the
+   indent list-style used to provide implicitly — without it the injected
+   marker spans and the removed list-style both stop indenting the block. */
+.pdf-export ul,
+.pdf-export ol {
+  list-style: none !important;
+  padding-left: 1.2em;
+}
+
+.pdf-export-marker {
+  margin-right: 0.4em;
+}
+
+/* export.service.ts's `pagebreak` option is 'css' mode only now — no
+   'avoid-all' (pushed whole elements, like a large image, entirely onto
+   the next page rather than letting them split, leaving a big blank gap
+   on the page before it), and no 'legacy' either (its naive pixel-slicing
+   ignores element boundaries entirely — confirmed in a real export: it cut
+   a heading and an image cleanly in half across a page boundary, mid-glyph
+   and mid-photo). 'css' mode paginates by actual DOM position and respects
+   break-inside:avoid, so it's the only mode that can push an element whole
+   onto the next page *without* also being willing to physically slice
+   through anything not on this list — headings and images (never good to
+   split), plus code blocks/tables/callouts/transclusion boxes from before. */
+.pdf-export h1,
+.pdf-export h2,
+.pdf-export h3,
+.pdf-export h4,
+.pdf-export h5,
+.pdf-export h6,
+.pdf-export img,
+.pdf-export pre,
+.pdf-export table,
+.pdf-export .callout,
+.pdf-export .transclusion {
+  break-inside: avoid;
+}
