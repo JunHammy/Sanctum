@@ -1,4 +1,4 @@
-import { CheckCircle2, XCircle, Info, X } from 'lucide-react'
+import { CheckCircle2, XCircle, Info, Loader2, X } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useToastStore, type ToastType } from '../../stores/toast.store'
 
@@ -6,12 +6,14 @@ const ICONS: Record<ToastType, typeof CheckCircle2> = {
   success: CheckCircle2,
   error: XCircle,
   info: Info,
+  loading: Loader2,
 }
 
 const COLORS: Record<ToastType, string> = {
   success: 'var(--success)',
   error: 'var(--error)',
   info: 'var(--accent-link)',
+  loading: 'var(--text-muted)',
 }
 
 // Mounted once at the app root (App.tsx) so any store action anywhere can
@@ -37,7 +39,7 @@ export function ToastContainer() {
               className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm shadow-lg"
               style={{ borderColor: 'var(--border)', background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}
             >
-              <Icon size={16} style={{ color: COLORS[toast.type] }} />
+              <Icon size={16} style={{ color: COLORS[toast.type] }} className={toast.type === 'loading' ? 'animate-spin' : undefined} />
               <span>{toast.message}</span>
               <button
                 type="button"

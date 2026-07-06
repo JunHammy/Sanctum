@@ -20,7 +20,7 @@ type ExportFormat = 'pdf' | 'docx'
 // gets click-outside/Escape-to-close for free.
 export function ExportMenu({ fileId, isOpen, onClose }: ExportMenuProps) {
   const fileTree = useVaultStore((s) => s.fileTree)
-  const showToast = useToastStore((s) => s.show)
+  const toastPromise = useToastStore((s) => s.promise)
   // One flag covering both formats (not a separate bool each) — exporting
   // either one disables every option here, so a second export can't start
   // while the first is still mid-flight.
@@ -30,20 +30,28 @@ export function ExportMenu({ fileId, isOpen, onClose }: ExportMenuProps) {
 
   async function handleMarkdown() {
     try {
-      await downloadNoteMarkdown(fileId, title)
+      await toastPromise(() => downloadNoteMarkdown(fileId, title), {
+        loading: 'Downloading…',
+        success: 'Markdown downloaded',
+        error: 'Failed to download note',
+      })
       onClose()
     } catch {
-      showToast('Failed to download note', 'error')
+      // toastPromise already surfaced the error toast.
     }
   }
 
   async function handlePdf() {
     setExporting('pdf')
     try {
-      await exportNoteToPDF(fileId, title, fileTree)
+      await toastPromise(() => exportNoteToPDF(fileId, title, fileTree), {
+        loading: 'Exporting PDF…',
+        success: 'PDF exported',
+        error: 'Failed to export PDF',
+      })
       onClose()
     } catch {
-      showToast('Failed to export PDF', 'error')
+      // toastPromise already surfaced the error toast.
     } finally {
       setExporting(null)
     }
@@ -52,10 +60,14 @@ export function ExportMenu({ fileId, isOpen, onClose }: ExportMenuProps) {
   async function handleDocx() {
     setExporting('docx')
     try {
-      await exportNoteToDocx(fileId, title, fileTree)
+      await toastPromise(() => exportNoteToDocx(fileId, title, fileTree), {
+        loading: 'Exporting Word document…',
+        success: 'Word document exported',
+        error: 'Failed to export Word document',
+      })
       onClose()
     } catch {
-      showToast('Failed to export Word document', 'error')
+      // toastPromise already surfaced the error toast.
     } finally {
       setExporting(null)
     }

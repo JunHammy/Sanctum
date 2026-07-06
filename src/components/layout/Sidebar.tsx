@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
-import { RefreshCw, FilePlus, FolderPlus, FoldVertical, UnfoldVertical } from 'lucide-react'
+import { RefreshCw, FilePlus, FolderPlus, FoldVertical, UnfoldVertical, Archive } from 'lucide-react'
 import { useUIStore } from '../../stores/ui.store'
 import { useVaultStore } from '../../stores/vault.store'
 import { useToastStore } from '../../stores/toast.store'
 import { toUserMessage, logError } from '../../lib/error-messages'
 import { collectFolderIds } from '../../lib/vault-tree'
+import { exportVaultZip } from '../../services/backup.service'
 import { FileTree } from '../sidebar/FileTree'
 import { TagBrowser } from '../sidebar/TagBrowser'
 import { LoadingSpinner } from '../common/LoadingSpinner'
@@ -28,7 +29,9 @@ export function Sidebar({ nodes, isLoading, error, onRefresh }: SidebarProps) {
   const createNote = useVaultStore((s) => s.createNote)
   const createFolder = useVaultStore((s) => s.createFolder)
   const showToast = useToastStore((s) => s.show)
+  const toastPromise = useToastStore((s) => s.promise)
   const [openModal, setOpenModal] = useState<'note' | 'folder' | null>(null)
+  const [isBackingUp, setIsBackingUp] = useState(false)
 
   const allFolderIds = useMemo(() => collectFolderIds(nodes), [nodes])
   // A single toggle (rather than two separate buttons) that flips based on
@@ -61,6 +64,23 @@ export function Sidebar({ nodes, isLoading, error, onRefresh }: SidebarProps) {
     } catch (err) {
       logError('sidebar.createFolder', err)
       showToast(toUserMessage(err, 'Could not create the folder.'), 'error')
+    }
+  }
+
+  async function handleBackup() {
+    setIsBackingUp(true)
+    try {
+      await toastPromise(() => exportVaultZip(nodes), {
+        loading: 'Zipping vault…',
+        success: 'Vault backup downloaded',
+        error: (err) => toUserMessage(err, 'Could not create the vault backup.'),
+      })
+    } catch (err) {
+      // toastPromise already surfaced the error toast — this just keeps
+      // the diagnostic log.
+      logError('sidebar.backup', err)
+    } finally {
+      setIsBackingUp(false)
     }
   }
 
@@ -135,6 +155,17 @@ export function Sidebar({ nodes, isLoading, error, onRefresh }: SidebarProps) {
                     disabled={isLoading}
                   >
                     <RefreshCw size={14} className={isLoading ? 'animate-spin' : undefined} />
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Download vault backup (.zip)"
+                    title="Download vault backup (.zip)"
+                    className="rounded p-1 hover:opacity-80 disabled:opacity-50"
+                    style={{ color: 'var(--accent-link)' }}
+                    onClick={handleBackup}
+                    disabled={isBackingUp || nodes.length === 0}
+                  >
+                    <Archive size={14} className={isBackingUp ? 'animate-pulse' : undefined} />
                   </button>
                 </div>
               </div>
