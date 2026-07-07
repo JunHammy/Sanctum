@@ -3,6 +3,8 @@ import { createJSONStorage, persist } from 'zustand/middleware'
 import * as authService from '../services/auth.service'
 import type { AuthUser } from '../services/auth.service'
 import { useNoteStore } from './note.store'
+import { useVaultStore } from './vault.store'
+import { useVaultPreferenceStore } from './vault-preference.store'
 import { useToastStore } from './toast.store'
 import { logError } from '../lib/error-messages'
 
@@ -117,6 +119,11 @@ export const useAuthStore = create<AuthState>()(
         // survives the sign-out/sign-in cycle untouched, silently blocking
         // a retry after re-authenticating.
         useNoteStore.getState().reset()
+        // A different Google account signing in next has an entirely
+        // different Drive — the previous session's vaults list/active
+        // vault id must not leak into it.
+        useVaultStore.getState().reset()
+        useVaultPreferenceStore.getState().setActiveVaultId(null)
       },
 
       scheduleRefresh: () => {

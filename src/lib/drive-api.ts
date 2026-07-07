@@ -1,6 +1,6 @@
 const DRIVE_API_BASE = 'https://www.googleapis.com/drive/v3'
 const DRIVE_UPLOAD_BASE = 'https://www.googleapis.com/upload/drive/v3'
-const FOLDER_MIME = 'application/vnd.google-apps.folder'
+export const FOLDER_MIME = 'application/vnd.google-apps.folder'
 
 export interface DriveFile {
   id: string
@@ -66,6 +66,33 @@ export async function createFolder(token: string, name: string, parentId = 'root
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name, mimeType: FOLDER_MIME, parents: [parentId] }),
+  })
+}
+
+// All direct child folders of parentId, unfiltered by name — used for vault
+// discovery (each vault is a subfolder of the "Sanctum" container).
+export async function listFolders(token: string, parentId: string): Promise<DriveFile[]> {
+  const q = `'${parentId}' in parents and mimeType = '${FOLDER_MIME}' and trashed = false`
+  const params = new URLSearchParams({ q, fields: 'files(id,name,mimeType)' })
+  const data = await request(token, `${DRIVE_API_BASE}/files?${params.toString()}`)
+  return data.files
+}
+
+// Every direct child of parentId regardless of type — used only for the
+// one-time flat-vault migration check (does this folder hold loose notes,
+// i.e. is it the old single-vault layout, or only vault subfolders already).
+export async function listChildren(token: string, parentId: string): Promise<DriveFile[]> {
+  const q = `'${parentId}' in parents and trashed = false`
+  const params = new URLSearchParams({ q, fields: 'files(id,name,mimeType,parents)' })
+  const data = await request(token, `${DRIVE_API_BASE}/files?${params.toString()}`)
+  return data.files
+}
+
+export async function renameFile(token: string, fileId: string, name: string): Promise<DriveFile> {
+  return request(token, `${DRIVE_API_BASE}/files/${fileId}?fields=id,name,mimeType`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
   })
 }
 
@@ -150,6 +177,19 @@ export async function moveFile(
 ): Promise<DriveFile> {
   const params = new URLSearchParams({ addParents: newParentId, removeParents: oldParentId, fields: 'id,parents' })
   return request(token, `${DRIVE_API_BASE}/files/${fileId}?${params.toString()}`, { method: 'PATCH' })
+}
+
+// Soft delete (trashed: true), not the permanent DELETE endpoint — matches
+// Drive's own web UI convention (moves to Trash, recoverable there) rather
+// than an unrecoverable hard delete. Trashing a folder cascades to
+// everything inside it automatically on Drive's side, same as trashing one
+// from drive.google.com directly.
+export async function trashFile(token: string, fileId: string): Promise<void> {
+  await request(token, `${DRIVE_API_BASE}/files/${fileId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ trashed: true }),
+  })
 }
 
 // No separate mimeType param — the blob's own .type already carries this

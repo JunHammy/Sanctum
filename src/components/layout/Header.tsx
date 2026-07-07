@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Menu, LogOut, Sun, Moon, History, Search, RefreshCw, Download } from 'lucide-react'
 import { useAuthStore } from '../../stores/auth.store'
 import { useUIStore } from '../../stores/ui.store'
@@ -29,6 +30,7 @@ export function Header({ onOpenSearch }: HeaderProps) {
   const isSaving = useNoteStore((s) => s.isSaving)
   const [revisionsOpen, setRevisionsOpen] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
+  const navigate = useNavigate()
 
   return (
     <header
@@ -45,9 +47,14 @@ export function Header({ onOpenSearch }: HeaderProps) {
         >
           <Menu size={18} />
         </button>
-        <span className="hidden font-semibold sm:inline" style={{ color: 'var(--accent-heading)' }}>
+        <button
+          type="button"
+          className="hidden font-semibold hover:opacity-80 sm:inline"
+          style={{ color: 'var(--accent-heading)' }}
+          onClick={() => navigate('/vaults')}
+        >
           Sanctum
-        </span>
+        </button>
       </div>
 
       <div className="flex min-w-0 flex-1 justify-center px-1">

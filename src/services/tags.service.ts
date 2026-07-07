@@ -1,13 +1,14 @@
 import * as driveService from './drive.service'
 import { extractFrontmatter } from './markdown.service'
 import { flattenFiles } from './search.service'
-import { getCachedContent, setCachedContent, getMeta, setMeta } from './cache.service'
+import { getCachedContent, setCachedContent, getMeta, setMeta, deleteMeta } from './cache.service'
 import { extractInlineTags } from '../lib/tag-syntax'
 import type { FileTreeNode } from '../types/vault.types'
 
 export type TagMap = Map<string, string[]> // tag -> note ids carrying it
 
-const TAG_MAP_META_KEY = 'tag-map'
+// Namespaced by vault id — see search.service.ts's searchIndexMetaKey.
+const tagMapMetaKey = (vaultId: string) => `tag-map:${vaultId}`
 // Same batch size as search.service's/backlinks.service's indexers.
 const FETCH_BATCH_SIZE = 8
 
@@ -49,18 +50,24 @@ function toTagMap(working: Map<string, Set<string>>): TagMap {
   return map
 }
 
-async function persist(map: TagMap): Promise<void> {
-  await setMeta(TAG_MAP_META_KEY, Array.from(map.entries()))
+async function persist(map: TagMap, vaultId: string): Promise<void> {
+  await setMeta(tagMapMetaKey(vaultId), Array.from(map.entries()))
 }
 
-export async function loadCachedMap(): Promise<TagMap | null> {
-  const entries = await getMeta<[string, string[]][]>(TAG_MAP_META_KEY)
+export async function loadCachedMap(vaultId: string): Promise<TagMap | null> {
+  const entries = await getMeta<[string, string[]][]>(tagMapMetaKey(vaultId))
   return entries ? new Map(entries) : null
+}
+
+// Called when a vault is deleted, so its tag map doesn't linger orphaned in
+// IndexedDB forever.
+export async function clearVaultCache(vaultId: string): Promise<void> {
+  await deleteMeta(tagMapMetaKey(vaultId))
 }
 
 // Full rebuild — same cache-reuse strategy as backlinks.service.ts:
 // content search indexing already cached costs nothing extra here.
-export async function buildTagMap(fileTree: FileTreeNode[]): Promise<TagMap> {
+export async function buildTagMap(fileTree: FileTreeNode[], vaultId: string): Promise<TagMap> {
   const working = new Map<string, Set<string>>()
   const files = flattenFiles(fileTree)
   const toFetch: typeof files = []
@@ -90,13 +97,13 @@ export async function buildTagMap(fileTree: FileTreeNode[]): Promise<TagMap> {
   }
 
   const map = toTagMap(working)
-  await persist(map)
+  await persist(map, vaultId)
   return map
 }
 
 // Incremental update for a single note (called on save/create) — drops its
 // old tags wholesale and re-scans the new content.
-export async function updateTagsForNote(existing: TagMap, fileId: string, raw: string): Promise<TagMap> {
+export async function updateTagsForNote(existing: TagMap, fileId: string, raw: string, vaultId: string): Promise<TagMap> {
   const working = new Map<string, Set<string>>()
   for (const [tag, sources] of existing) working.set(tag, new Set(sources))
 
@@ -104,6 +111,6 @@ export async function updateTagsForNote(existing: TagMap, fileId: string, raw: s
   indexNoteTags(working, fileId, raw)
 
   const map = toTagMap(working)
-  await persist(map)
+  await persist(map, vaultId)
   return map
 }

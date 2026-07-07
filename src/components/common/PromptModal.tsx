@@ -1,10 +1,14 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { Modal } from './Modal'
 
 interface PromptModalProps {
   isOpen: boolean
   title: string
   placeholder: string
+  // Pre-fills the input — used by vault rename, where the field should
+  // start with the vault's current name rather than blank.
+  initialValue?: string
+  submitLabel?: string
   onSubmit: (value: string) => void
   onClose: () => void
 }
@@ -12,8 +16,24 @@ interface PromptModalProps {
 // Text-input-and-submit variant of Modal, used for "New Note"/"New Folder"
 // name entry — a real modal instead of window.prompt(), which would be
 // jarring in an otherwise polished app.
-export function PromptModal({ isOpen, title, placeholder, onSubmit, onClose }: PromptModalProps) {
-  const [value, setValue] = useState('')
+export function PromptModal({
+  isOpen,
+  title,
+  placeholder,
+  initialValue = '',
+  submitLabel = 'Create',
+  onSubmit,
+  onClose,
+}: PromptModalProps) {
+  const [value, setValue] = useState(initialValue)
+
+  // This component stays mounted across opens (only Modal's inner content
+  // animates in/out), so a fresh initialValue needs to be re-applied
+  // explicitly each time it opens rather than relying on useState's
+  // one-time initializer.
+  useEffect(() => {
+    if (isOpen) setValue(initialValue)
+  }, [isOpen, initialValue])
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -49,7 +69,7 @@ export function PromptModal({ isOpen, title, placeholder, onSubmit, onClose }: P
             className="rounded-md px-3 py-1.5 text-sm font-medium hover:opacity-90"
             style={{ background: 'var(--accent-link)', color: 'var(--bg-primary)' }}
           >
-            Create
+            {submitLabel}
           </button>
         </div>
       </form>

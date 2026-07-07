@@ -1,4 +1,13 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type DragEvent,
+  type MouseEvent as ReactMouseEvent,
+} from 'react'
+import { useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'motion/react'
 import {
   RefreshCw,
@@ -9,12 +18,16 @@ import {
   Archive,
   Upload,
   MoreHorizontal,
+  ChevronDown,
+  Check,
+  Settings2,
 } from 'lucide-react'
 import { useUIStore } from '../../stores/ui.store'
 import { useVaultStore } from '../../stores/vault.store'
 import { useToastStore } from '../../stores/toast.store'
 import { toUserMessage, logError } from '../../lib/error-messages'
 import { collectFolderIds } from '../../lib/vault-tree'
+import { DRAG_MIME, type DragPayload } from '../../lib/file-tree-dnd'
 import { exportVaultZip } from '../../services/backup.service'
 import { importDocx } from '../../services/docx-import.service'
 import { FileTree } from '../sidebar/FileTree'
@@ -33,19 +46,35 @@ interface SidebarProps {
 export function Sidebar({ nodes, isLoading, error, onRefresh }: SidebarProps) {
   const sidebarOpen = useUIStore((s) => s.sidebarOpen)
   const closeSidebar = useUIStore((s) => s.closeSidebar)
+  const sidebarWidth = useUIStore((s) => s.sidebarWidth)
+  const setSidebarWidth = useUIStore((s) => s.setSidebarWidth)
   const expandedFolderIds = useUIStore((s) => s.expandedFolderIds)
   const expandAll = useUIStore((s) => s.expandAll)
   const collapseAll = useUIStore((s) => s.collapseAll)
   const createNote = useVaultStore((s) => s.createNote)
   const createFolder = useVaultStore((s) => s.createFolder)
+  const moveNode = useVaultStore((s) => s.moveNode)
+  const rootFolderId = useVaultStore((s) => s.rootFolderId)
+  const vaults = useVaultStore((s) => s.vaults)
+  const activeVaultId = useVaultStore((s) => s.activeVaultId)
+  const switchVault = useVaultStore((s) => s.switchVault)
   const showToast = useToastStore((s) => s.show)
   const toastPromise = useToastStore((s) => s.promise)
+  const navigate = useNavigate()
   const [openModal, setOpenModal] = useState<'note' | 'folder' | null>(null)
   const [moreMenuOpen, setMoreMenuOpen] = useState(false)
+  const [vaultMenuOpen, setVaultMenuOpen] = useState(false)
   const [isBackingUp, setIsBackingUp] = useState(false)
   const [isImporting, setIsImporting] = useState(false)
+  const [isRootDropTarget, setIsRootDropTarget] = useState(false)
+  const [isResizing, setIsResizing] = useState(false)
   const importInputRef = useRef<HTMLInputElement>(null)
   const moreMenuRef = useRef<HTMLDivElement>(null)
+  const vaultMenuRef = useRef<HTMLDivElement>(null)
+  const resizeStartRef = useRef<{ startX: number; startWidth: number } | null>(null)
+
+  const activeVault = vaults.find((v) => v.id === activeVaultId)
+  const otherVaults = vaults.filter((v) => v.id !== activeVaultId)
 
   const allFolderIds = useMemo(() => collectFolderIds(nodes), [nodes])
   // A single toggle (rather than two separate buttons) that flips based on
@@ -76,6 +105,73 @@ export function Sidebar({ nodes, isLoading, error, onRefresh }: SidebarProps) {
     }
   }, [moreMenuOpen])
 
+  // Same anchored-dropdown/click-outside convention as the "•••" menu above.
+  useEffect(() => {
+    if (!vaultMenuOpen) return
+    function handleClickOutside(e: MouseEvent) {
+      if (vaultMenuRef.current && !vaultMenuRef.current.contains(e.target as Node)) setVaultMenuOpen(false)
+    }
+    function handleEscape(e: KeyboardEvent) {
+      if (e.key === 'Escape') setVaultMenuOpen(false)
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    document.addEventListener('keydown', handleEscape)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+      document.removeEventListener('keydown', handleEscape)
+    }
+  }, [vaultMenuOpen])
+
+  // VS Code-style drag-to-resize — native mousemove/mouseup rather than
+  // HTML5 drag-and-drop (that API is built for dragging *data*, e.g. moving
+  // a note into a folder elsewhere in this file, not for a plain "follow
+  // the cursor" width drag). Listeners are attached to `document` rather
+  // than the handle itself so the drag keeps tracking even if the cursor
+  // outruns the thin 4px strip mid-drag.
+  useEffect(() => {
+    if (!isResizing) return
+    function handleMouseMove(e: MouseEvent) {
+      const start = resizeStartRef.current
+      if (!start) return
+      setSidebarWidth(start.startWidth + (e.clientX - start.startX))
+    }
+    function handleMouseUp() {
+      setIsResizing(false)
+      resizeStartRef.current = null
+    }
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [isResizing, setSidebarWidth])
+
+  function handleResizeStart(e: ReactMouseEvent) {
+    e.preventDefault() // avoid text selection while dragging
+    resizeStartRef.current = { startX: e.clientX, startWidth: sidebarWidth }
+    setIsResizing(true)
+  }
+
+  async function handleSwitchVault(id: string) {
+    setVaultMenuOpen(false)
+    if (id === activeVaultId) return
+    try {
+      await switchVault(id)
+      // Confirmed bug: switchVault resets note/tab state, but switching via
+      // this dropdown never navigated away, so a still-open note's URL
+      // (/vault/note/:fileId) stayed put — NoteView just re-opened the same
+      // file against the NEW vault's fileTree, and every wikilink/
+      // transclusion inside it (pointing at other notes in its OWN vault)
+      // showed as not-found. Closing the note view on every switch avoids
+      // that entirely, matching what most vault-switcher UIs do anyway.
+      navigate('/vault')
+    } catch (err) {
+      logError('sidebar.switchVault', err)
+      showToast(toUserMessage(err, 'Could not switch vaults.'), 'error')
+    }
+  }
+
   function handleToggleExpandAll() {
     if (allExpanded) collapseAll()
     else expandAll(allFolderIds)
@@ -89,6 +185,27 @@ export function Sidebar({ nodes, isLoading, error, onRefresh }: SidebarProps) {
   function handleRefreshClick() {
     setMoreMenuOpen(false)
     onRefresh()
+  }
+
+  // The only drop target previously was a *folder* row — there was no way
+  // to drag something back out to the vault root once it was nested
+  // anywhere, for either notes or folders. The "Vault" label itself is the
+  // drop target for that, same convention as most file managers' "drop on
+  // the root label to un-nest" affordance.
+  function handleRootDrop(e: DragEvent<HTMLDivElement>) {
+    e.preventDefault()
+    setIsRootDropTarget(false)
+    if (!rootFolderId) return
+    const raw = e.dataTransfer.getData(DRAG_MIME)
+    if (!raw) return
+    const payload = JSON.parse(raw) as DragPayload
+    if (payload.parentId === rootFolderId) return // already at root
+    moveNode(payload.fileId, rootFolderId, payload.parentId)
+      .then(() => showToast('Moved to vault root', 'success'))
+      .catch((err) => {
+        logError('sidebar.moveToRoot', err)
+        showToast(toUserMessage(err, 'Could not move that item.'), 'error')
+      })
   }
 
   async function handleCreateNote(name: string) {
@@ -176,18 +293,98 @@ export function Sidebar({ nodes, isLoading, error, onRefresh }: SidebarProps) {
               transition={{ duration: 0.15 }}
             />
             <motion.aside
-              className="fixed inset-y-0 left-0 z-40 w-64 overflow-y-auto border-r px-2 py-3 lg:static lg:z-auto lg:py-4"
-              style={{ borderColor: 'var(--border)', background: 'var(--bg-secondary)' }}
-              initial={{ x: -256, opacity: 0 }}
+              className="fixed inset-y-0 left-0 z-40 border-r lg:relative lg:z-auto"
+              style={{ width: sidebarWidth, borderColor: 'var(--border)', background: 'var(--bg-secondary)' }}
+              initial={{ x: -sidebarWidth, opacity: 0 }}
               animate={{ x: 0, opacity: 1 }}
-              exit={{ x: -256, opacity: 0 }}
+              exit={{ x: -sidebarWidth, opacity: 0 }}
               transition={{ duration: 0.18 }}
             >
-              <div className="mb-2 flex items-center justify-between px-2">
-                <span className="text-xs tracking-wide uppercase" style={{ color: 'var(--text-muted)' }}>
-                  Vault
-                </span>
-                <div className="flex items-center gap-0.5">
+              {/* Drag-to-resize handle, desktop only. Lives directly on this
+                  non-scrolling outer panel, NOT inside the scrollable content
+                  div below — confirmed as the actual reason dragging didn't
+                  work at all: both this handle and the sidebar's own vertical
+                  scrollbar were occupying the same pixels at the right edge,
+                  and the browser's native scrollbar always wins that mouse
+                  event. The inner div now stops 6px short of this edge so
+                  its scrollbar renders there instead, leaving this strip
+                  genuinely free. hover highlight added for cursor feedback
+                  beyond just the cursor:col-resize style. */}
+              {/* No visible highlight at all, hover or active-drag — the
+                  cursor:col-resize change alone is the feedback. */}
+              <div
+                className="absolute inset-y-0 right-0 z-10 hidden w-2 cursor-col-resize lg:block"
+                onMouseDown={handleResizeStart}
+              />
+              <div className="h-full w-[calc(100%-6px)] overflow-y-auto px-2 py-3 lg:py-4">
+              <div
+                className="mb-2 flex items-center justify-between gap-1 rounded px-2"
+                style={{ background: isRootDropTarget ? 'var(--bg-tertiary)' : undefined }}
+                onDragOver={(e) => {
+                  if (!e.dataTransfer.types.includes(DRAG_MIME)) return
+                  e.preventDefault()
+                  setIsRootDropTarget(true)
+                }}
+                onDragLeave={() => setIsRootDropTarget(false)}
+                onDrop={handleRootDrop}
+              >
+                <div className="relative min-w-0 flex-1" ref={vaultMenuRef}>
+                  <button
+                    type="button"
+                    title="Drop a note or folder here to move it to the vault root — click to switch vaults"
+                    className="flex w-full min-w-0 items-center gap-1 rounded text-xs tracking-wide uppercase hover:opacity-80"
+                    style={{ color: 'var(--text-muted)' }}
+                    onClick={() => setVaultMenuOpen((open) => !open)}
+                  >
+                    <span className="truncate">{activeVault?.name ?? 'Vault'}</span>
+                    <ChevronDown size={12} className="shrink-0" />
+                  </button>
+                  <AnimatePresence>
+                    {vaultMenuOpen && (
+                      <motion.div
+                        className="absolute top-full left-0 z-50 mt-1 w-56 rounded-md border p-1 shadow-lg"
+                        style={{ borderColor: 'var(--border)', background: 'var(--bg-primary)' }}
+                        initial={{ opacity: 0, y: -4, scale: 0.98 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: -4, scale: 0.98 }}
+                        transition={{ duration: 0.12 }}
+                      >
+                        {activeVault && (
+                          <div className="flex items-center gap-2.5 rounded px-2.5 py-2 text-left text-sm">
+                            <Check size={16} style={{ color: 'var(--accent-link)' }} />
+                            <span className="truncate font-medium" style={{ color: 'var(--text-primary)' }}>
+                              {activeVault.name}
+                            </span>
+                          </div>
+                        )}
+                        {otherVaults.map((vault) => (
+                          <button
+                            key={vault.id}
+                            type="button"
+                            className="flex w-full items-center gap-2.5 rounded py-2 pr-2.5 pl-[34px] text-left text-sm hover:bg-[var(--bg-tertiary)]"
+                            style={{ color: 'var(--text-primary)' }}
+                            onClick={() => handleSwitchVault(vault.id)}
+                          >
+                            <span className="truncate">{vault.name}</span>
+                          </button>
+                        ))}
+                        <div className="my-1 h-px" style={{ background: 'var(--border)' }} aria-hidden="true" />
+                        <button
+                          type="button"
+                          className="flex w-full items-center gap-2.5 rounded px-2.5 py-2 text-left text-sm hover:bg-[var(--bg-tertiary)]"
+                          onClick={() => {
+                            setVaultMenuOpen(false)
+                            navigate('/vaults')
+                          }}
+                        >
+                          <Settings2 size={16} style={{ color: 'var(--text-muted)' }} />
+                          <span style={{ color: 'var(--text-primary)' }}>Manage vaults…</span>
+                        </button>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+                <div className="flex shrink-0 items-center gap-0.5">
                   <button
                     type="button"
                     aria-label="New note"
@@ -315,6 +512,7 @@ export function Sidebar({ nodes, isLoading, error, onRefresh }: SidebarProps) {
                   <TagBrowser />
                 </>
               )}
+              </div>
             </motion.aside>
           </>
         )}

@@ -1,14 +1,15 @@
 import * as driveService from './drive.service'
 import { extractFrontmatter } from './markdown.service'
 import { flattenFiles } from './search.service'
-import { getCachedContent, setCachedContent, getMeta, setMeta } from './cache.service'
+import { getCachedContent, setCachedContent, getMeta, setMeta, deleteMeta } from './cache.service'
 import { resolveWikilink } from '../lib/wikilink-resolver'
 import { extractWikilinkTargets } from '../lib/wikilink-syntax'
 import type { FileTreeNode } from '../types/vault.types'
 
 export type BacklinkMap = Map<string, string[]> // targetId -> source note ids that link to it
 
-const BACKLINK_MAP_META_KEY = 'backlink-map'
+// Namespaced by vault id — see search.service.ts's searchIndexMetaKey.
+const backlinkMapMetaKey = (vaultId: string) => `backlink-map:${vaultId}`
 // Same batch size as search.service's indexer, for the same reason —
 // personal vault scale, but no reason to fire everything at once either.
 const FETCH_BATCH_SIZE = 8
@@ -37,13 +38,19 @@ function toBacklinkMap(working: Map<string, Set<string>>): BacklinkMap {
   return map
 }
 
-async function persist(map: BacklinkMap): Promise<void> {
-  await setMeta(BACKLINK_MAP_META_KEY, Array.from(map.entries()))
+async function persist(map: BacklinkMap, vaultId: string): Promise<void> {
+  await setMeta(backlinkMapMetaKey(vaultId), Array.from(map.entries()))
 }
 
-export async function loadCachedMap(): Promise<BacklinkMap | null> {
-  const entries = await getMeta<[string, string[]][]>(BACKLINK_MAP_META_KEY)
+export async function loadCachedMap(vaultId: string): Promise<BacklinkMap | null> {
+  const entries = await getMeta<[string, string[]][]>(backlinkMapMetaKey(vaultId))
   return entries ? new Map(entries) : null
+}
+
+// Called when a vault is deleted, so its backlink map doesn't linger
+// orphaned in IndexedDB forever.
+export async function clearVaultCache(vaultId: string): Promise<void> {
+  await deleteMeta(backlinkMapMetaKey(vaultId))
 }
 
 // Full rebuild of every note's outgoing links. Reuses whatever raw content
@@ -52,7 +59,7 @@ export async function loadCachedMap(): Promise<BacklinkMap | null> {
 // since it was last cached costs nothing here, no second network fetch.
 // A note not yet cached by anything still gets fetched (and cached) here,
 // so backlinks work correctly even if search indexing hasn't run.
-export async function buildBacklinkMap(fileTree: FileTreeNode[]): Promise<BacklinkMap> {
+export async function buildBacklinkMap(fileTree: FileTreeNode[], vaultId: string): Promise<BacklinkMap> {
   const working = new Map<string, Set<string>>()
   const files = flattenFiles(fileTree)
   const toFetch: typeof files = []
@@ -84,7 +91,7 @@ export async function buildBacklinkMap(fileTree: FileTreeNode[]): Promise<Backli
   }
 
   const map = toBacklinkMap(working)
-  await persist(map)
+  await persist(map, vaultId)
   return map
 }
 
@@ -96,6 +103,7 @@ export async function updateBacklinksForNote(
   fileId: string,
   raw: string,
   fileTree: FileTreeNode[],
+  vaultId: string,
 ): Promise<BacklinkMap> {
   const working = new Map<string, Set<string>>()
   for (const [targetId, sources] of existing) working.set(targetId, new Set(sources))
@@ -104,6 +112,6 @@ export async function updateBacklinksForNote(
   indexNoteLinks(working, fileId, raw, fileTree)
 
   const map = toBacklinkMap(working)
-  await persist(map)
+  await persist(map, vaultId)
   return map
 }

@@ -1,11 +1,15 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ChevronRight } from 'lucide-react'
+import { ChevronRight, Trash2 } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useUIStore } from '../../stores/ui.store'
 import { useVaultStore } from '../../stores/vault.store'
 import { useToastStore } from '../../stores/toast.store'
 import { toUserMessage, logError } from '../../lib/error-messages'
+import { isDescendantOf } from '../../lib/vault-tree'
+import { DRAG_MIME, type DragPayload } from '../../lib/file-tree-dnd'
+import { useIsTouchDevice } from '../../hooks/useIsTouchDevice'
+import { ConfirmModal } from '../common/ConfirmModal'
 import type { FileTreeNode as FileTreeNodeType } from '../../types/vault.types'
 
 // The vault-root "assets" folder is a pure attachment dump with nothing to
@@ -16,72 +20,138 @@ import type { FileTreeNode as FileTreeNodeType } from '../../types/vault.types'
 // otherwise a freshly created folder has nothing to drag notes into.
 const HIDDEN_FOLDER_NAME = 'assets'
 
-const DRAG_MIME = 'application/x-sanctum-note'
-
-interface DragPayload {
-  fileId: string
-  parentId: string
-}
-
 // parentId is the id of the folder (or vault root) this node currently
-// lives directly under — needed so a note drag can tell Drive which parent
-// to remove as well as which to add (Drive files can technically have
+// lives directly under — needed so a drag can tell Drive which parent to
+// remove as well as which to add (Drive files can technically have
 // multiple parents, but Sanctum only ever uses one).
 export function FileTreeNode({ node, depth, parentId }: { node: FileTreeNodeType; depth: number; parentId: string }) {
   const expanded = useUIStore((s) => s.expandedFolderIds.has(node.id))
   const toggleFolder = useUIStore((s) => s.toggleFolder)
   const [isDropTarget, setIsDropTarget] = useState(false)
+  const [confirmOpen, setConfirmOpen] = useState(false)
   const navigate = useNavigate()
   const closeSidebar = useUIStore((s) => s.closeSidebar)
-  const moveNote = useVaultStore((s) => s.moveNote)
+  const moveNode = useVaultStore((s) => s.moveNode)
+  const deleteNode = useVaultStore((s) => s.deleteNode)
+  const fileTree = useVaultStore((s) => s.fileTree)
   const showToast = useToastStore((s) => s.show)
-  const { fileId } = useParams<{ fileId?: string }>()
+  const isTouch = useIsTouchDevice()
+  const { fileId: activeFileId } = useParams<{ fileId?: string }>()
 
   if (node.type === 'attachment') return null // not shown in the main tree, MP §5.3
+
+  const displayName = node.type === 'file' ? node.name.replace(/\.md$/, '') : node.name
+
+  async function handleDelete() {
+    // If the note being deleted is the one currently open — or, for a
+    // folder, the active note lives somewhere in its subtree — navigate
+    // to the bare /vault route first. VaultRoute's own effect (added
+    // earlier this session, for the exact same "activeNoteId pointing at
+    // something that no longer exists" gap) clears note.store for free
+    // once it lands there.
+    const affectsActiveNote =
+      activeFileId != null &&
+      (activeFileId === node.id || (node.type === 'folder' && isDescendantOf(fileTree, node.id, activeFileId)))
+    try {
+      await deleteNode(node.id)
+      if (affectsActiveNote) navigate('/vault')
+      showToast(`Deleted "${displayName}"`, 'success')
+    } catch (err) {
+      logError('filetree.deleteNode', err)
+      showToast(toUserMessage(err, `Could not delete "${displayName}".`), 'error')
+    }
+  }
+
+  const deleteButton = (
+    <>
+      <button
+        type="button"
+        aria-label={`Delete ${displayName}`}
+        className={`shrink-0 rounded p-1 transition-opacity hover:text-[var(--error)] ${
+          isTouch ? 'opacity-70' : 'opacity-0 group-hover:opacity-100'
+        }`}
+        style={{ color: 'var(--text-muted)' }}
+        onClick={(e) => {
+          e.stopPropagation()
+          setConfirmOpen(true)
+        }}
+      >
+        <Trash2 size={13} />
+      </button>
+      <ConfirmModal
+        isOpen={confirmOpen}
+        title={node.type === 'folder' ? 'Delete folder' : 'Delete note'}
+        message={
+          node.type === 'folder'
+            ? `Delete "${displayName}" and everything inside it? This moves it to Google Drive's Trash, where it can be recovered.`
+            : `Delete "${displayName}"? This moves it to Google Drive's Trash, where it can be recovered.`
+        }
+        onConfirm={handleDelete}
+        onClose={() => setConfirmOpen(false)}
+      />
+    </>
+  )
 
   if (node.type === 'folder') {
     if (node.name === HIDDEN_FOLDER_NAME && depth === 0) return null
 
     return (
       <div>
-        <button
-          type="button"
-          className="flex w-full items-center gap-1 truncate rounded px-2 py-1 text-left text-sm hover:opacity-80"
-          style={{
-            paddingLeft: `${depth * 12 + 8}px`,
-            color: 'var(--text-primary)',
-            background: isDropTarget ? 'var(--bg-tertiary)' : undefined,
-          }}
-          onClick={() => toggleFolder(node.id)}
-          onDragOver={(e) => {
-            if (!e.dataTransfer.types.includes(DRAG_MIME)) return
-            e.preventDefault()
-            setIsDropTarget(true)
-          }}
-          onDragLeave={() => setIsDropTarget(false)}
-          onDrop={(e) => {
-            setIsDropTarget(false)
-            const raw = e.dataTransfer.getData(DRAG_MIME)
-            if (!raw) return
-            const payload = JSON.parse(raw) as DragPayload
-            if (payload.parentId === node.id) return // already here
-            moveNote(payload.fileId, node.id, payload.parentId)
-              .then(() => showToast(`Moved to "${node.name}"`, 'success'))
-              .catch((err) => {
-                logError('filetree.moveNote', err)
-                showToast(toUserMessage(err, 'Could not move that note.'), 'error')
-              })
-          }}
+        <div
+          className="group flex w-full items-center gap-1 rounded pr-1 hover:opacity-80"
+          style={{ background: isDropTarget ? 'var(--bg-tertiary)' : undefined }}
         >
-          <motion.span
-            className="inline-flex shrink-0"
-            animate={{ rotate: expanded ? 90 : 0 }}
-            transition={{ duration: 0.15 }}
+          <button
+            type="button"
+            draggable
+            className="flex min-w-0 flex-1 items-center gap-1 truncate py-1 text-left text-sm"
+            style={{ paddingLeft: `${depth * 12 + 8}px`, color: 'var(--text-primary)' }}
+            onClick={() => toggleFolder(node.id)}
+            onDragStart={(e) => {
+              const payload: DragPayload = { fileId: node.id, parentId, type: 'folder' }
+              e.dataTransfer.setData(DRAG_MIME, JSON.stringify(payload))
+              e.dataTransfer.effectAllowed = 'move'
+            }}
+            onDragOver={(e) => {
+              if (!e.dataTransfer.types.includes(DRAG_MIME)) return
+              e.preventDefault()
+              setIsDropTarget(true)
+            }}
+            onDragLeave={() => setIsDropTarget(false)}
+            onDrop={(e) => {
+              setIsDropTarget(false)
+              const raw = e.dataTransfer.getData(DRAG_MIME)
+              if (!raw) return
+              const payload = JSON.parse(raw) as DragPayload
+              if (payload.parentId === node.id) return // already here
+              if (payload.fileId === node.id) return // can't drop a folder onto itself
+              // A folder can't be moved into its own descendant — doing so
+              // would build an unreachable branch of the tree (and likely
+              // infinite-loop buildFileTree's parent-child reconstruction
+              // on the next vault load).
+              if (payload.type === 'folder' && isDescendantOf(fileTree, payload.fileId, node.id)) {
+                showToast('Cannot move a folder into its own subfolder', 'error')
+                return
+              }
+              moveNode(payload.fileId, node.id, payload.parentId)
+                .then(() => showToast(`Moved to "${node.name}"`, 'success'))
+                .catch((err) => {
+                  logError('filetree.moveNode', err)
+                  showToast(toUserMessage(err, 'Could not move that item.'), 'error')
+                })
+            }}
           >
-            <ChevronRight size={14} />
-          </motion.span>
-          <span className="truncate">{node.name}</span>
-        </button>
+            <motion.span
+              className="inline-flex shrink-0"
+              animate={{ rotate: expanded ? 90 : 0 }}
+              transition={{ duration: 0.15 }}
+            >
+              <ChevronRight size={14} />
+            </motion.span>
+            <span className="truncate">{node.name}</span>
+          </button>
+          {deleteButton}
+        </div>
         <AnimatePresence initial={false}>
           {expanded && (
             <motion.div
@@ -101,31 +171,34 @@ export function FileTreeNode({ node, depth, parentId }: { node: FileTreeNodeType
     )
   }
 
-  const isActive = node.id === fileId
+  const isActive = node.id === activeFileId
 
   return (
-    <button
-      type="button"
-      draggable
-      className="block w-full truncate rounded px-2 py-1 text-left text-sm hover:opacity-80"
-      style={{
-        paddingLeft: `${depth * 12 + 24}px`,
-        color: isActive ? 'var(--accent-link)' : 'var(--text-secondary)',
-        background: isActive ? 'var(--bg-tertiary)' : undefined,
-      }}
-      onDragStart={(e) => {
-        const payload: DragPayload = { fileId: node.id, parentId }
-        e.dataTransfer.setData(DRAG_MIME, JSON.stringify(payload))
-        e.dataTransfer.effectAllowed = 'move'
-      }}
-      onClick={() => {
-        navigate(`/vault/note/${node.id}`)
-        // On mobile the sidebar overlays content, so get out of the way
-        // once a note's picked; on desktop it stays open (own layout column).
-        if (window.innerWidth < 1024) closeSidebar()
-      }}
-    >
-      {node.name.replace(/\.md$/, '')}
-    </button>
+    <div className="group flex w-full items-center gap-1 rounded pr-1 hover:opacity-80">
+      <button
+        type="button"
+        draggable
+        className="min-w-0 flex-1 truncate py-1 text-left text-sm"
+        style={{
+          paddingLeft: `${depth * 12 + 24}px`,
+          color: isActive ? 'var(--accent-link)' : 'var(--text-secondary)',
+          background: isActive ? 'var(--bg-tertiary)' : undefined,
+        }}
+        onDragStart={(e) => {
+          const payload: DragPayload = { fileId: node.id, parentId, type: 'note' }
+          e.dataTransfer.setData(DRAG_MIME, JSON.stringify(payload))
+          e.dataTransfer.effectAllowed = 'move'
+        }}
+        onClick={() => {
+          navigate(`/vault/note/${node.id}`)
+          // On mobile the sidebar overlays content, so get out of the way
+          // once a note's picked; on desktop it stays open (own layout column).
+          if (window.innerWidth < 1024) closeSidebar()
+        }}
+      >
+        {displayName}
+      </button>
+      {deleteButton}
+    </div>
   )
 }

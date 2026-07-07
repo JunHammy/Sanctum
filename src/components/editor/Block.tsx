@@ -3,6 +3,8 @@ import { ChevronUp, ChevronDown, GripVertical, Plus, Trash2 } from 'lucide-react
 import { useVaultStore } from '../../stores/vault.store'
 import { useImageResolution } from '../../hooks/useImageResolution'
 import { useTransclusion } from '../../hooks/useTransclusion'
+import { useCharts } from '../../hooks/useCharts'
+import { useMediaEmbeds } from '../../hooks/useMediaEmbeds'
 import { useIsTouchDevice } from '../../hooks/useIsTouchDevice'
 import { renderBody } from '../../services/markdown.service'
 import { MarkdownEditor } from './MarkdownEditor'
@@ -72,6 +74,8 @@ export const Block = memo(function Block({
 
   useImageResolution(containerRef, fileTree, isVaultLoading)
   useTransclusion(containerRef, fileTree)
+  useCharts(containerRef)
+  useMediaEmbeds(containerRef, fileTree)
 
   return (
     <div

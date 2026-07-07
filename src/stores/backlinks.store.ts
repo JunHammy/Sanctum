@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import * as backlinksService from '../services/backlinks.service'
 import type { BacklinkMap } from '../services/backlinks.service'
+import { useVaultStore } from './vault.store'
 import type { FileTreeNode } from '../types/vault.types'
 
 interface BacklinksState {
@@ -9,6 +10,9 @@ interface BacklinksState {
   getBacklinks: (fileId: string) => string[]
   buildMap: (fileTree: FileTreeNode[]) => Promise<void>
   updateForNote: (fileId: string, raw: string, fileTree: FileTreeNode[]) => Promise<void>
+  // See search.store.ts's reset — clears in-memory state before a vault
+  // switch so a stale backlink map never bleeds into the newly active vault.
+  reset: () => void
 }
 
 // A fresh `[] ` literal returned from a selector is a new reference every
@@ -29,18 +33,27 @@ export const useBacklinksStore = create<BacklinksState>()((set, get) => ({
     // Fire-and-forget from vault.store's loadVault, same as search — this
     // shouldn't block the sidebar from rendering, and a failure here just
     // means the Linked mentions panel stays empty until the next load.
+    const vaultId = useVaultStore.getState().activeVaultId
+    if (!vaultId) return
     set({ isBuilding: true })
     try {
-      const map = await backlinksService.buildBacklinkMap(fileTree)
+      const map = await backlinksService.buildBacklinkMap(fileTree, vaultId)
+      // See search.store.ts's buildIndex — a build started for a vault the
+      // user has since switched away from must not clobber the newly
+      // active vault's already-loaded backlink map when it resolves late.
+      if (useVaultStore.getState().activeVaultId !== vaultId) return
       set({ map, isBuilding: false })
     } catch {
-      set({ isBuilding: false })
+      if (useVaultStore.getState().activeVaultId === vaultId) set({ isBuilding: false })
     }
   },
 
   updateForNote: async (fileId, raw, fileTree) => {
+    const vaultId = useVaultStore.getState().activeVaultId
+    if (!vaultId) return
     try {
-      const map = await backlinksService.updateBacklinksForNote(get().map, fileId, raw, fileTree)
+      const map = await backlinksService.updateBacklinksForNote(get().map, fileId, raw, fileTree, vaultId)
+      if (useVaultStore.getState().activeVaultId !== vaultId) return
       set({ map })
     } catch {
       // A failed incremental update just means this note's outgoing links
@@ -48,4 +61,6 @@ export const useBacklinksStore = create<BacklinksState>()((set, get) => ({
       // as a save error, since the actual save already succeeded.
     }
   },
+
+  reset: () => set({ map: new Map(), isBuilding: false }),
 }))

@@ -19,6 +19,10 @@ interface SearchState {
   search: (query: string) => SearchResultItem[]
   buildIndex: (fileTree: FileTreeNode[]) => Promise<void>
   updateIndexForNote: (fileId: string, raw: string) => Promise<void>
+  // Clears in-memory state without touching the persisted cache — called
+  // right before switching the active vault, so a stale index from the
+  // previous vault can never be used as buildIndex's seed for the new one.
+  reset: () => void
 }
 
 export const useSearchStore = create<SearchState>()((set, get) => ({
@@ -43,21 +47,33 @@ export const useSearchStore = create<SearchState>()((set, get) => ({
     // the sidebar from rendering, so failures here are swallowed rather
     // than surfaced as a vault-level error. Search just won't have results
     // yet if it fails; the next successful vault load retries.
+    const vaultId = useVaultStore.getState().activeVaultId
+    if (!vaultId) return
     set({ isIndexing: true })
     try {
-      const seed = get().index ?? (await searchService.loadCachedIndex())
-      const index = await searchService.buildIndex(fileTree, seed)
+      const seed = get().index ?? (await searchService.loadCachedIndex(vaultId))
+      const index = await searchService.buildIndex(fileTree, seed, vaultId)
+      // The active vault can change mid-flight (switching again before a
+      // slow first build finishes) — a build that started for the OLD
+      // vault must not clobber whatever the newly active vault already
+      // loaded once it finally resolves. Confirmed as a real bug: without
+      // this guard, searching in vault B could return vault A's results if
+      // A's index was still building when the switch to B happened.
+      if (useVaultStore.getState().activeVaultId !== vaultId) return
       set({ index, isIndexing: false })
     } catch {
-      set({ isIndexing: false })
+      if (useVaultStore.getState().activeVaultId === vaultId) set({ isIndexing: false })
     }
   },
 
   updateIndexForNote: async (fileId, raw) => {
+    const vaultId = useVaultStore.getState().activeVaultId
+    if (!vaultId) return
     const fileTree = useVaultStore.getState().fileTree
     const name = findFileName(fileTree, fileId) ?? fileId
     try {
-      const index = await searchService.updateIndexForNote(get().index, fileId, name, raw, fileTree)
+      const index = await searchService.updateIndexForNote(get().index, fileId, name, raw, fileTree, vaultId)
+      if (useVaultStore.getState().activeVaultId !== vaultId) return
       set({ index })
     } catch {
       // A failed incremental update just means this one note's new content
@@ -65,4 +81,6 @@ export const useSearchStore = create<SearchState>()((set, get) => ({
       // surfacing as a save error, since the actual save already succeeded.
     }
   },
+
+  reset: () => set({ index: null, isIndexing: false }),
 }))

@@ -12,6 +12,16 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       workbox: {
+        // plotly.js-dist-min is ~4.6MB unminified-equivalent (far past the
+        // ~1MB the master plan estimated, and past workbox's own 2MB
+        // per-file precache limit, which fails the build outright without
+        // this). It's already lazy-loaded via dynamic import() (useCharts.ts)
+        // — excluding it from the *precache* manifest doesn't stop it from
+        // working, it just stops every single user from being forced to
+        // download 4.6MB on first install for a chart type most notes will
+        // never use. A runtime fetch (only when an actual ```plotly block
+        // is rendered) goes through the normal browser HTTP cache instead.
+        globIgnores: ['**/plotly.min-*.js'],
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/,

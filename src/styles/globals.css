@@ -84,6 +84,46 @@ body {
   letter-spacing: normal;
 }
 
+/* --scrollbar-thumb/--scrollbar-track were already defined per-theme above
+   but never actually applied anywhere — every scrollbar in the app was
+   still the browser's untouched native one (thick, with up/down arrow
+   buttons), not a themed one. `scrollbar-width`/`scrollbar-color` cover
+   Firefox; the `::-webkit-scrollbar*` pseudo-elements cover Chrome/Edge/
+   Safari — between the two, every browser gets a thin, arrow-less,
+   theme-matched scrollbar rather than needing per-component overrides. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 /* Global button feedback — Tailwind v4's preflight doesn't set a pointer
    cursor on <button> the way browsers' own UA stylesheets sometimes imply,
    and most buttons here only had a hover:opacity-* utility with no

@@ -12,6 +12,9 @@ interface TabsState {
   // Drag-and-drop reordering — moves fileId to sit immediately before or
   // after targetId.
   moveTab: (fileId: string, targetId: string, side: 'before' | 'after') => void
+  // Called on vault switch (mirrors note.store's reset) — a different
+  // vault's notes have no business staying open as tabs from the last one.
+  resetTabs: () => void
 }
 
 // Deliberately in-memory only (no persistence) for v1 — a fresh page load
@@ -49,4 +52,6 @@ export const useTabsStore = create<TabsState>()((set, get) => ({
       return { openFileIds: next }
     })
   },
+
+  resetTabs: () => set({ openFileIds: [] }),
 }))

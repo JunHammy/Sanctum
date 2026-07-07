@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { Navigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../../stores/auth.store'
+import { useVaultPreferenceStore } from '../../stores/vault-preference.store'
 
 // Redirects are returned directly from render (via <Navigate>) rather than
 // triggered from a useEffect. An effect-based navigate() only runs after
@@ -12,6 +13,7 @@ import { useAuthStore } from '../../stores/auth.store'
 export function AuthGate({ children }: { children: ReactNode }) {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
   const hasHydrated = useAuthStore((s) => s.hasHydrated)
+  const hasActiveVault = useVaultPreferenceStore((s) => s.activeVaultId !== null)
   const location = useLocation()
 
   // zustand's persist middleware hydrates sessionStorage asynchronously,
@@ -29,7 +31,10 @@ export function AuthGate({ children }: { children: ReactNode }) {
     return <Navigate to="/login" replace />
   }
   if (isAuthenticated && location.pathname === '/login') {
-    return <Navigate to="/vault" replace />
+    // First run (or every vault since deleted) has no persisted "last
+    // active vault" yet — land on the vault manager instead of /vault,
+    // which would otherwise render with nothing to show.
+    return <Navigate to={hasActiveVault ? '/vault' : '/vaults'} replace />
   }
 
   return <>{children}</>

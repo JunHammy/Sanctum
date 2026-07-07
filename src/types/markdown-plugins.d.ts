@@ -38,3 +38,17 @@ declare module 'turndown-plugin-gfm' {
   import type TurndownService from 'turndown'
   export function gfm(service: TurndownService): void
 }
+
+// plotly.js-dist-min ships no types and has no @types package (and can't
+// be run outside a real browser to double-check at a shell, unlike the
+// packages above — it touches `window`/DOM APIs at import time) — this
+// covers just the one call useCharts.ts makes, against the well-documented
+// public API (Plotly.newPlot(container, data, layout)).
+declare module 'plotly.js-dist-min' {
+  interface PlotlyStatic {
+    newPlot(container: HTMLElement, data: unknown[], layout?: Record<string, unknown>): Promise<void>
+    purge(container: HTMLElement): void
+  }
+  const Plotly: PlotlyStatic
+  export default Plotly
+}

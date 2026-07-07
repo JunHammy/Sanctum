@@ -21,3 +21,25 @@ export function collectFolderIds(nodes: FileTreeNode[]): string[] {
   }
   return ids
 }
+
+function findNodeById(nodes: FileTreeNode[], id: string): FileTreeNode | null {
+  for (const node of nodes) {
+    if (node.id === id) return node
+    if (node.type === 'folder') {
+      const found = findNodeById(node.children, id)
+      if (found) return found
+    }
+  }
+  return null
+}
+
+// True if `descendantId` sits anywhere inside `ancestorId`'s own subtree —
+// used to block a folder being dragged into itself or one of its own
+// children, which would otherwise silently build an unreachable, self-
+// referential tree (and likely infinite-loop buildFileTree's own
+// parent-child reconstruction on the next vault load).
+export function isDescendantOf(nodes: FileTreeNode[], ancestorId: string, descendantId: string): boolean {
+  const ancestor = findNodeById(nodes, ancestorId)
+  if (!ancestor || ancestor.type !== 'folder') return false
+  return findNodeById(ancestor.children, descendantId) !== null
+}

@@ -1,7 +1,7 @@
 import MiniSearch from 'minisearch'
 import * as driveService from './drive.service'
 import { extractFrontmatter, slugify } from './markdown.service'
-import { getCachedContent, setCachedContent, getMeta, setMeta } from './cache.service'
+import { getCachedContent, setCachedContent, getMeta, setMeta, deleteMeta } from './cache.service'
 import { extractInlineTags } from '../lib/tag-syntax'
 import { resolveWikilink } from '../lib/wikilink-resolver'
 import { parseEmbedLine, extractSection } from '../lib/transclusion'
@@ -15,7 +15,9 @@ export interface SearchDoc {
   excerpt: string
 }
 
-const SEARCH_INDEX_META_KEY = 'search-index'
+// Namespaced by vault id — each vault gets its own persisted index, so
+// switching vaults never reads or overwrites another vault's search data.
+const searchIndexMetaKey = (vaultId: string) => `search-index:${vaultId}`
 // Fetched in small concurrent batches rather than all-at-once — personal
 // vault scale, but no reason to fire 100+ simultaneous requests either.
 const FETCH_BATCH_SIZE = 8
@@ -139,18 +141,24 @@ function upsertDoc(index: MiniSearch<SearchDoc>, doc: SearchDoc) {
   index.add(doc)
 }
 
-async function persist(index: MiniSearch<SearchDoc>) {
-  await setMeta(SEARCH_INDEX_META_KEY, JSON.stringify(index.toJSON()))
+async function persist(index: MiniSearch<SearchDoc>, vaultId: string) {
+  await setMeta(searchIndexMetaKey(vaultId), JSON.stringify(index.toJSON()))
 }
 
-export async function loadCachedIndex(): Promise<MiniSearch<SearchDoc> | null> {
-  const serialized = await getMeta<string>(SEARCH_INDEX_META_KEY)
+export async function loadCachedIndex(vaultId: string): Promise<MiniSearch<SearchDoc> | null> {
+  const serialized = await getMeta<string>(searchIndexMetaKey(vaultId))
   if (!serialized) return null
   try {
     return MiniSearch.loadJSON<SearchDoc>(serialized, MINISEARCH_OPTIONS)
   } catch {
     return null // corrupt/incompatible cache — buildIndex will rebuild from scratch
   }
+}
+
+// Called when a vault is deleted, so its search index doesn't linger
+// orphaned in IndexedDB forever.
+export async function clearVaultCache(vaultId: string): Promise<void> {
+  await deleteMeta(searchIndexMetaKey(vaultId))
 }
 
 // Note deletion isn't a feature Sanctum has yet (no delete-to-trash), so
@@ -160,6 +168,7 @@ export async function loadCachedIndex(): Promise<MiniSearch<SearchDoc> | null> {
 export async function buildIndex(
   fileTree: FileTreeNode[],
   existing: MiniSearch<SearchDoc> | null,
+  vaultId: string,
 ): Promise<MiniSearch<SearchDoc>> {
   const index = existing ?? createIndex()
   const files = flattenFiles(fileTree)
@@ -193,7 +202,7 @@ export async function buildIndex(
     )
   }
 
-  await persist(index)
+  await persist(index, vaultId)
   return index
 }
 
@@ -261,15 +270,65 @@ export function findTagLine(rawFile: string, tag: string): number | null {
   return i === -1 ? null : i
 }
 
+export interface GlobalSearchResultItem {
+  id: string
+  title: string
+  tags: string
+  excerpt: string
+  vaultId: string
+  vaultName: string
+}
+
+// Cross-vault search for the vault manager page, where there's no single
+// active vault to scope a query to. Reads each vault's already-persisted
+// index straight from IndexedDB rather than depending on anything held in
+// memory — a vault that's never been opened yet simply has no cached index
+// and contributes no results until visited once, a natural consequence of
+// indexing being vault-scoped by design, not a bug.
+export async function searchAcrossVaults(
+  query: string,
+  vaults: { id: string; name: string }[],
+): Promise<GlobalSearchResultItem[]> {
+  if (!query.trim()) return []
+  const perVault = await Promise.all(
+    vaults.map(async (vault) => {
+      const index = await loadCachedIndex(vault.id)
+      if (!index) return []
+      return index.search(query).map((hit) => ({
+        id: String(hit.id),
+        title: String(hit.title ?? ''),
+        tags: String(hit.tags ?? ''),
+        excerpt: String(hit.excerpt ?? ''),
+        vaultId: vault.id,
+        vaultName: vault.name,
+        score: hit.score,
+      }))
+    }),
+  )
+  return perVault
+    .flat()
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 30)
+    .map((r) => ({
+      id: r.id,
+      title: r.title,
+      tags: r.tags,
+      excerpt: r.excerpt,
+      vaultId: r.vaultId,
+      vaultName: r.vaultName,
+    }))
+}
+
 export async function updateIndexForNote(
   existing: MiniSearch<SearchDoc> | null,
   fileId: string,
   fileName: string,
   raw: string,
   fileTree: FileTreeNode[],
+  vaultId: string,
 ): Promise<MiniSearch<SearchDoc>> {
   const index = existing ?? createIndex()
   upsertDoc(index, await toDocWithEmbeds(fileId, fileName, raw, fileTree))
-  await persist(index)
+  await persist(index, vaultId)
   return index
 }

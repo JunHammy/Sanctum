@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ChevronRight, Tag as TagIcon } from 'lucide-react'
+import { ChevronRight, Search, Tag as TagIcon } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useTagsStore } from '../../stores/tags.store'
 import { useVaultStore } from '../../stores/vault.store'
@@ -9,6 +9,7 @@ import { useUIStore } from '../../stores/ui.store'
 import { findFileName } from '../../lib/vault-tree'
 import { findTagLine } from '../../services/search.service'
 import { readFile } from '../../services/drive.service'
+import { fuzzyMatch } from '../../lib/fuzzy-match'
 
 // Sits below the file tree — collapsible, same chrome/animation language as
 // PropertiesPanel/TableOfContents/FileTreeNode. Aggregates both frontmatter
@@ -21,6 +22,7 @@ export function TagBrowser() {
   const navigate = useNavigate()
   const [sectionExpanded, setSectionExpanded] = useState(false)
   const [openTag, setOpenTag] = useState<string | null>(null)
+  const [filter, setFilter] = useState('')
 
   const tags = useMemo(
     () =>
@@ -29,6 +31,22 @@ export function TagBrowser() {
         .sort((a, b) => a.tag.localeCompare(b.tag)),
     [map],
   )
+
+  // Same fuzzyMatch scoring Quick Switcher already uses (rewards a match
+  // right at the start of the string, or right after a hyphen, over a
+  // coincidental mid-word one) rather than a plain .includes() — a plain
+  // substring filter left results in their original alphabetical order
+  // regardless of *where* the match fell, so typing "i" listed "acoustics"
+  // above "index" despite "index" being the obviously better match.
+  const filteredTags = useMemo(() => {
+    const query = filter.trim()
+    if (!query) return tags
+    return tags
+      .map((entry) => ({ entry, score: fuzzyMatch(query, entry.tag) }))
+      .filter(({ score }) => score > 0)
+      .sort((a, b) => b.score - a.score || a.entry.tag.localeCompare(b.entry.tag))
+      .map(({ entry }) => entry)
+  }, [tags, filter])
 
   if (tags.length === 0) return null
 
@@ -88,8 +106,34 @@ export function TagBrowser() {
             transition={{ duration: 0.15 }}
             style={{ overflow: 'hidden' }}
           >
+            {/* Only worth showing once there's enough tags that scanning
+                the raw list stops being faster than typing — matches the
+                same "don't clutter for the common small case" reasoning
+                as other conditionally-shown affordances in this sidebar. */}
+            {tags.length > 6 && (
+              <div className="relative px-1 pt-1 pb-1.5">
+                <Search
+                  size={12}
+                  className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2"
+                  style={{ color: 'var(--text-muted)' }}
+                />
+                <input
+                  type="text"
+                  value={filter}
+                  onChange={(e) => setFilter(e.target.value)}
+                  placeholder="Filter tags…"
+                  className="w-full rounded border py-1 pr-2 pl-6 text-xs"
+                  style={{ borderColor: 'var(--border)', background: 'var(--bg-primary)', color: 'var(--text-primary)' }}
+                />
+              </div>
+            )}
+            {filteredTags.length === 0 && (
+              <p className="px-2 py-1 text-xs" style={{ color: 'var(--text-muted)' }}>
+                No tags match "{filter}"
+              </p>
+            )}
             <div className="flex flex-col gap-0.5 pt-1 pb-1">
-              {tags.map(({ tag, ids }) => (
+              {filteredTags.map(({ tag, ids }) => (
                 <div key={tag}>
                   <button
                     type="button"

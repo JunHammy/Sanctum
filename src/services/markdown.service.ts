@@ -8,6 +8,8 @@ import { tagPlugin } from '../lib/markdown-plugins/plugin-tag'
 import { wikilinkPlugin } from '../lib/markdown-plugins/plugin-wikilink'
 import { blockIdPlugin } from '../lib/markdown-plugins/plugin-block-id'
 import { transclusionPlugin } from '../lib/markdown-plugins/plugin-transclusion'
+import { chartPlugin } from '../lib/markdown-plugins/plugin-chart'
+import { mediaEmbedPlugin } from '../lib/markdown-plugins/plugin-media-embed'
 import { sourceLinePlugin } from '../lib/markdown-plugins/plugin-source-line'
 import { renderMath } from '../lib/katex-setup'
 import hljs from 'highlight.js/lib/core'
@@ -91,6 +93,8 @@ function getRenderer(): MarkdownIt {
       .use(transclusionPlugin) // ![[Note]], ![[Note#Heading]], ![[Note^block-id]] — embeds a whole paragraph
       .use(tagPlugin) // #tag
       .use(wikilinkPlugin) // [[Note]], [[Note#Heading]], [[Note^block-id]], [[Note|Alias]]
+      .use(chartPlugin) // ```mermaid / ```plotly / ```chartjs fenced code blocks
+      .use(mediaEmbedPlugin) // YouTube/audio/PDF via ![](...) — anything else stays a plain <img>
       .use(headingIdPlugin)
       .use(sourceLinePlugin) // data-src-line on every top-level block, for scroll-to-line targeting
   }

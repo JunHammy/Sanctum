@@ -2,11 +2,23 @@ import { useAuthStore } from '../stores/auth.store'
 import { useVaultStore } from '../stores/vault.store'
 import { useNoteStore } from '../stores/note.store'
 import * as driveApi from '../lib/drive-api'
-import { DriveApiError } from '../lib/drive-api'
+import { DriveApiError, FOLDER_MIME } from '../lib/drive-api'
 import type { DriveFile, DriveRevision } from '../lib/drive-api'
 
-const VAULT_FOLDER_NAME = 'Sanctum'
+export type { DriveFile }
+
+// "Sanctum" is now a *container* folder — each vault is a named subfolder
+// directly under it, discovered by listing the container's children. A
+// single-vault install predates this: its notes/folders sit directly inside
+// "Sanctum" itself, which migrateFlatVaultIfNeeded detects and fixes once.
+const CONTAINER_FOLDER_NAME = 'Sanctum'
+const MIGRATION_VAULT_NAME = 'Cat Cognition Research'
 const ASSETS_FOLDER_NAME = 'assets'
+
+export interface VaultMeta {
+  id: string
+  name: string
+}
 
 function getToken(): string {
   const token = useAuthStore.getState().token
@@ -41,11 +53,48 @@ export function updateFile(fileId: string, content: string): Promise<DriveFile> 
   return withAuth((token) => driveApi.updateFile(token, fileId, content))
 }
 
-export function findOrCreateVaultFolder(): Promise<DriveFile> {
+export function findOrCreateContainerFolder(): Promise<DriveFile> {
   return withAuth(async (token) => {
-    const existing = await driveApi.findFolderByName(token, VAULT_FOLDER_NAME)
+    const existing = await driveApi.findFolderByName(token, CONTAINER_FOLDER_NAME)
     if (existing) return existing
-    return driveApi.createFolder(token, VAULT_FOLDER_NAME)
+    return driveApi.createFolder(token, CONTAINER_FOLDER_NAME)
+  })
+}
+
+// One-time, idempotent: if the container's direct children include anything
+// that isn't a folder, this is the old flat single-vault layout — create a
+// new vault subfolder and re-parent every existing child into it (a move,
+// not a copy, so file ids/revision history/sharing all survive untouched).
+// A container whose children are already all folders is left alone.
+export async function migrateFlatVaultIfNeeded(containerId: string): Promise<void> {
+  return withAuth(async (token) => {
+    const children = await driveApi.listChildren(token, containerId)
+    if (children.length === 0 || children.every((c) => c.mimeType === FOLDER_MIME)) return
+    const vaultFolder = await driveApi.createFolder(token, MIGRATION_VAULT_NAME, containerId)
+    for (const child of children) {
+      await driveApi.moveFile(token, child.id, vaultFolder.id, containerId)
+    }
+  })
+}
+
+export function listVaults(containerId: string): Promise<VaultMeta[]> {
+  return withAuth(async (token) => {
+    const folders = await driveApi.listFolders(token, containerId)
+    return folders.map((f) => ({ id: f.id, name: f.name }))
+  })
+}
+
+export function createVaultFolder(containerId: string, name: string): Promise<VaultMeta> {
+  return withAuth(async (token) => {
+    const folder = await driveApi.createFolder(token, name, containerId)
+    return { id: folder.id, name: folder.name }
+  })
+}
+
+export function renameVaultFolder(vaultId: string, name: string): Promise<VaultMeta> {
+  return withAuth(async (token) => {
+    const folder = await driveApi.renameFile(token, vaultId, name)
+    return { id: folder.id, name: folder.name }
   })
 }
 
@@ -116,4 +165,8 @@ export function readRevision(fileId: string, revisionId: string): Promise<string
 
 export function moveFile(fileId: string, newParentId: string, oldParentId: string): Promise<DriveFile> {
   return withAuth((token) => driveApi.moveFile(token, fileId, newParentId, oldParentId))
+}
+
+export function trashFile(fileId: string): Promise<void> {
+  return withAuth((token) => driveApi.trashFile(token, fileId))
 }
