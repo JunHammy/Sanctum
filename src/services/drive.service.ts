@@ -98,6 +98,14 @@ export async function uploadImage(file: File): Promise<string> {
   return filename
 }
 
+// General-purpose version of uploadImage above — that one is tied to
+// note.store's currently-*active* note (for its filename-slug source),
+// which doesn't make sense for a flow like DOCX import that's creating a
+// brand new note and has no "current note" to speak of yet.
+export function uploadAttachment(parentId: string, filename: string, blob: Blob): Promise<DriveFile> {
+  return withAuth((token) => driveApi.uploadBinary(token, parentId, filename, blob))
+}
+
 export function listRevisions(fileId: string): Promise<DriveRevision[]> {
   return withAuth((token) => driveApi.listRevisions(token, fileId))
 }

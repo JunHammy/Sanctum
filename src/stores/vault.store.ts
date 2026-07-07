@@ -15,6 +15,10 @@ interface VaultState {
   error: string | null
   loadVault: () => Promise<void>
   createNote: (name: string) => Promise<string>
+  // Same reactive-insert path as createNote, but for a caller that already
+  // has a full note body ready (DOCX import, primarily) rather than
+  // wanting the blank starter template createNote always builds.
+  createNoteWithContent: (name: string, content: string) => Promise<string>
   createFolder: (name: string) => Promise<void>
   moveNote: (fileId: string, newParentId: string, oldParentId: string) => Promise<void>
 }
@@ -93,6 +97,27 @@ function findNode(nodes: FileTreeNode[], id: string): FileTreeNode | null {
   return null
 }
 
+// Shared by createNote/createNoteWithContent — inserts the new file into
+// the in-memory tree (no re-fetch, see insertNode's own comment for why)
+// and indexes its known-up-front content immediately, so a just-created
+// note is searchable/backlink-scannable/tag-browsable right away rather
+// than only after its first real save.
+function registerNewNoteFile(
+  get: () => VaultState,
+  set: (partial: Partial<VaultState>) => void,
+  file: DriveFile,
+  content: string,
+) {
+  const { fileTree, rootFolderId } = get()
+  if (!rootFolderId) return
+  const newNode: FileTreeNode = { id: file.id, name: file.name, type: 'file', modifiedTime: file.modifiedTime }
+  const nextTree = insertNode(fileTree, rootFolderId, rootFolderId, newNode)
+  set({ fileTree: nextTree })
+  useSearchStore.getState().updateIndexForNote(file.id, content)
+  useBacklinksStore.getState().updateForNote(file.id, content, nextTree)
+  useTagsStore.getState().updateForNote(file.id, content)
+}
+
 export const useVaultStore = create<VaultState>()((set, get) => ({
   rootFolderId: null,
   fileTree: [],
@@ -126,18 +151,14 @@ export const useVaultStore = create<VaultState>()((set, get) => ({
     const content = `---\ntitle: ${title}\ncreated: ${today}\n---\n\n# ${title}\n`
 
     const file = await driveService.createNote(filename, content)
-    const { fileTree, rootFolderId } = get()
-    if (rootFolderId) {
-      const newNode: FileTreeNode = { id: file.id, name: file.name, type: 'file', modifiedTime: file.modifiedTime }
-      const nextTree = insertNode(fileTree, rootFolderId, rootFolderId, newNode)
-      set({ fileTree: nextTree })
-      // Known content up front (the template above), so this new note is
-      // searchable/backlink-scannable/tag-browsable immediately rather than
-      // only after its first real save.
-      useSearchStore.getState().updateIndexForNote(file.id, content)
-      useBacklinksStore.getState().updateForNote(file.id, content, nextTree)
-      useTagsStore.getState().updateForNote(file.id, content)
-    }
+    registerNewNoteFile(get, set, file, content)
+    return file.id
+  },
+
+  createNoteWithContent: async (name, content) => {
+    const filename = name.endsWith('.md') ? name : `${name}.md`
+    const file = await driveService.createNote(filename, content)
+    registerNewNoteFile(get, set, file, content)
     return file.id
   },
 
