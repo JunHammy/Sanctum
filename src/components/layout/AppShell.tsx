@@ -5,6 +5,7 @@ import { TabBar } from './TabBar'
 import { ContentPane } from './ContentPane'
 import { QuickSwitcher } from '../search/QuickSwitcher'
 import { SearchModal } from '../search/SearchModal'
+import { CommandPalette } from '../common/CommandPalette'
 import { useKeyboardShortcut } from '../../hooks/useKeyboard'
 import { loadBlockEditor } from '../../lib/prefetch-block-editor'
 import type { FileTreeNode } from '../../types/vault.types'
@@ -23,9 +24,17 @@ interface AppShellProps {
 export function AppShell({ fileTree, isLoading, error, onRefresh, children }: AppShellProps) {
   const [quickSwitcherOpen, setQuickSwitcherOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
 
   useKeyboardShortcut('o', () => setQuickSwitcherOpen(true), { ctrl: true })
   useKeyboardShortcut('f', () => setSearchOpen(true), { ctrl: true, shift: true })
+  // Plain Ctrl+K is reserved by Chrome (focuses the address bar with a
+  // search prompt) — pages can technically override it while focus is
+  // inside the page, but it's too strong and widely-shared a muscle-memory
+  // shortcut to fight. Ctrl+Shift+K avoids the conflict entirely and
+  // matches this app's own convention of Shift for secondary actions
+  // (Search is already Ctrl+Shift+F).
+  useKeyboardShortcut('k', () => setCommandPaletteOpen(true), { ctrl: true, shift: true })
 
   // Starts the BlockEditor chunk fetch as early as possible — the moment
   // the vault shell mounts, in parallel with the vault-tree/note network
@@ -50,6 +59,12 @@ export function AppShell({ fileTree, isLoading, error, onRefresh, children }: Ap
       </div>
       <QuickSwitcher isOpen={quickSwitcherOpen} onClose={() => setQuickSwitcherOpen(false)} />
       <SearchModal isOpen={searchOpen} onClose={() => setSearchOpen(false)} />
+      <CommandPalette
+        isOpen={commandPaletteOpen}
+        onClose={() => setCommandPaletteOpen(false)}
+        onOpenSearch={() => setSearchOpen(true)}
+        onOpenQuickSwitcher={() => setQuickSwitcherOpen(true)}
+      />
     </div>
   )
 }
