@@ -68,7 +68,22 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* AppShell's own root div constrains itself to h-screen/overflow-hidden,
+   but html/body themselves were never locked to the viewport — so if a
+   long note's content is even momentarily taller than the viewport during
+   load (before that inner containment settles), the whole *window* scrolls
+   too, a second scrollbar flickering in and out alongside the note's own
+   content-pane scrollbar. Locking html/body to the viewport height with
+   overflow hidden means only the intentionally-scrollable inner panes
+   (sidebar, note content) can ever show a scrollbar, full stop. */
+html {
+  height: 100%;
+  overflow: hidden;
+}
+
 body {
+  height: 100%;
+  overflow: hidden;
   margin: 0;
   background: var(--bg-primary);
   color: var(--text-primary);
@@ -87,18 +102,28 @@ body {
 /* --scrollbar-thumb/--scrollbar-track were already defined per-theme above
    but never actually applied anywhere — every scrollbar in the app was
    still the browser's untouched native one (thick, with up/down arrow
-   buttons), not a themed one. `scrollbar-width`/`scrollbar-color` cover
-   Firefox; the `::-webkit-scrollbar*` pseudo-elements cover Chrome/Edge/
-   Safari — between the two, every browser gets a thin, arrow-less,
-   theme-matched scrollbar rather than needing per-component overrides. */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+   buttons), not a themed one. `scrollbar-width`/`scrollbar-color` are the
+   *standard* properties (originally Firefox-only); the `::-webkit-scrollbar*`
+   pseudo-elements are the legacy Chrome/Edge/Safari path, which is the only
+   one that can hide the up/down arrow buttons at all.
+   Real bug, confirmed by testing (a full server + browser restart ruled out
+   caching): Chrome 121+ now ALSO implements the standard properties, and
+   when both are present on the same element, Chrome prioritizes its own
+   standard-properties renderer over the legacy webkit pseudo-elements —
+   silently ignoring every ::-webkit-scrollbar-button rule below regardless
+   of how it's written. Scoping the standard properties to browsers that
+   don't support ::-webkit-scrollbar at all (i.e. genuinely Firefox) keeps
+   Chrome/Edge on the fully-controllable webkit path instead. */
+@supports not selector(::-webkit-scrollbar) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+  }
 }
 
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
@@ -106,15 +131,29 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
+  /* A transparent border + padding-box clip shrinks the visible thumb
+     inward from the track's edges — reads as a slim floating pill rather
+     than a bar that fills the full scrollbar width edge-to-edge. */
   background: var(--scrollbar-thumb);
-  border-radius: 4px;
+  background-clip: padding-box;
+  border: 1px solid transparent;
+  border-radius: 999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
   background: var(--text-muted);
+  background-clip: padding-box;
 }
 
-::-webkit-scrollbar-button {
+/* Every vendor-specific button pseudo-class, not just the general one —
+   belt-and-braces across Chromium versions/platforms that don't all treat
+   the general selector as covering all of these. */
+::-webkit-scrollbar-button,
+::-webkit-scrollbar-button:single-button,
+::-webkit-scrollbar-button:vertical:start,
+::-webkit-scrollbar-button:vertical:end,
+::-webkit-scrollbar-button:horizontal:start,
+::-webkit-scrollbar-button:horizontal:end {
   display: none;
   width: 0;
   height: 0;

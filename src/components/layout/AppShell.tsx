@@ -49,7 +49,7 @@ export function AppShell({ fileTree, isLoading, error, onRefresh, children }: Ap
 
   return (
     <div className="flex h-screen flex-col overflow-hidden">
-      <Header onOpenSearch={() => setSearchOpen(true)} />
+      <Header onOpenSearch={() => setSearchOpen(true)} onOpenCommandPalette={() => setCommandPaletteOpen(true)} />
       <div className="flex flex-1 overflow-hidden">
         <Sidebar nodes={fileTree} isLoading={isLoading} error={error} onRefresh={onRefresh} />
         <div className="flex flex-1 flex-col overflow-hidden">

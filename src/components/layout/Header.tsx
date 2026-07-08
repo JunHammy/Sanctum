@@ -1,15 +1,34 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Menu, LogOut, Sun, Moon, History, Search, RefreshCw, Download } from 'lucide-react'
+import {
+  Menu,
+  LogOut,
+  Sun,
+  Moon,
+  History,
+  Search,
+  RefreshCw,
+  Download,
+  HelpCircle,
+  Command,
+  Keyboard,
+  BookOpen,
+} from 'lucide-react'
+import { AnimatePresence, motion } from 'motion/react'
 import { useAuthStore } from '../../stores/auth.store'
 import { useUIStore } from '../../stores/ui.store'
 import { useNoteStore } from '../../stores/note.store'
 import { ReadEditToggle } from '../editor/ReadEditToggle'
 import { RevisionsPanel } from '../editor/RevisionsPanel'
 import { ExportMenu } from '../editor/ExportMenu'
+import { ShortcutsModal } from '../common/ShortcutsModal'
 
 interface HeaderProps {
   onOpenSearch: () => void
+  // Only provided inside a vault (AppShell) — the vault manager and help
+  // pages don't have a CommandPalette instance mounted, so that entry is
+  // simply omitted there rather than shown and doing nothing.
+  onOpenCommandPalette?: () => void
 }
 
 // Three-column navbar layout — left (nav/branding), center (search, the
@@ -17,7 +36,7 @@ interface HeaderProps {
 // right (note-specific controls + account). Previously search was a small
 // icon squeezed into the same row as save-status/theme/avatar/sign-out,
 // which read as cluttered rather than like a real product navbar.
-export function Header({ onOpenSearch }: HeaderProps) {
+export function Header({ onOpenSearch, onOpenCommandPalette }: HeaderProps) {
   const user = useAuthStore((s) => s.user)
   const signOut = useAuthStore((s) => s.signOut)
   const signIn = useAuthStore((s) => s.signIn)
@@ -30,7 +49,28 @@ export function Header({ onOpenSearch }: HeaderProps) {
   const isSaving = useNoteStore((s) => s.isSaving)
   const [revisionsOpen, setRevisionsOpen] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
+  const [helpMenuOpen, setHelpMenuOpen] = useState(false)
+  const [shortcutsOpen, setShortcutsOpen] = useState(false)
+  const helpMenuRef = useRef<HTMLDivElement>(null)
   const navigate = useNavigate()
+
+  // Same anchored-dropdown/click-outside convention as the sidebar's "•••"
+  // and vault-switcher menus.
+  useEffect(() => {
+    if (!helpMenuOpen) return
+    function handleClickOutside(e: MouseEvent) {
+      if (helpMenuRef.current && !helpMenuRef.current.contains(e.target as Node)) setHelpMenuOpen(false)
+    }
+    function handleEscape(e: KeyboardEvent) {
+      if (e.key === 'Escape') setHelpMenuOpen(false)
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    document.addEventListener('keydown', handleEscape)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+      document.removeEventListener('keydown', handleEscape)
+    }
+  }, [helpMenuOpen])
 
   return (
     <header
@@ -123,6 +163,73 @@ export function Header({ onOpenSearch }: HeaderProps) {
             <span className="hidden h-5 w-px sm:inline" style={{ background: 'var(--border)' }} aria-hidden="true" />
           </>
         )}
+        {/* Command palette gets its own single-click icon — it's an action
+            launcher, not reference material, so it doesn't belong bundled
+            inside the "?" help menu below (which is genuinely just docs:
+            the syntax guide and the shortcuts list). Only shown inside a
+            vault, where the palette actually exists. */}
+        {onOpenCommandPalette && (
+          <button
+            type="button"
+            aria-label="Command palette"
+            title="Command palette (Ctrl+Shift+K)"
+            className="rounded p-1.5 hover:opacity-80"
+            style={{ color: 'var(--text-secondary)' }}
+            onClick={onOpenCommandPalette}
+          >
+            <Command size={16} />
+          </button>
+        )}
+        {/* Visible entry point for reference material that otherwise has no
+            link anywhere in the UI — the syntax guide page and the
+            shortcuts list. */}
+        <div className="relative" ref={helpMenuRef}>
+          <button
+            type="button"
+            aria-label="Help"
+            title="Help"
+            className="rounded p-1.5 hover:opacity-80"
+            style={{ color: 'var(--text-secondary)' }}
+            onClick={() => setHelpMenuOpen((open) => !open)}
+          >
+            <HelpCircle size={16} />
+          </button>
+          <AnimatePresence>
+            {helpMenuOpen && (
+              <motion.div
+                className="absolute top-full right-0 z-50 mt-1 w-56 rounded-md border p-1 shadow-lg"
+                style={{ borderColor: 'var(--border)', background: 'var(--bg-primary)' }}
+                initial={{ opacity: 0, y: -4, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -4, scale: 0.98 }}
+                transition={{ duration: 0.12 }}
+              >
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2.5 rounded px-2.5 py-2 text-left text-sm hover:bg-[var(--bg-tertiary)]"
+                  onClick={() => {
+                    setHelpMenuOpen(false)
+                    navigate('/help')
+                  }}
+                >
+                  <BookOpen size={16} style={{ color: 'var(--text-muted)' }} />
+                  <span style={{ color: 'var(--text-primary)' }}>Syntax guide</span>
+                </button>
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2.5 rounded px-2.5 py-2 text-left text-sm hover:bg-[var(--bg-tertiary)]"
+                  onClick={() => {
+                    setHelpMenuOpen(false)
+                    setShortcutsOpen(true)
+                  }}
+                >
+                  <Keyboard size={16} style={{ color: 'var(--text-muted)' }} />
+                  <span style={{ color: 'var(--text-primary)' }}>Keyboard shortcuts</span>
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
         <button
           type="button"
           aria-label="Toggle theme"
@@ -155,6 +262,7 @@ export function Header({ onOpenSearch }: HeaderProps) {
           <ExportMenu fileId={activeNoteId} isOpen={exportOpen} onClose={() => setExportOpen(false)} />
         </>
       )}
+      <ShortcutsModal isOpen={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
     </header>
   )
 }

@@ -12,6 +12,7 @@ import {
   FolderOpen,
   PenLine,
   Keyboard,
+  HelpCircle,
 } from 'lucide-react'
 import { Modal } from './Modal'
 import { PromptModal } from './PromptModal'
@@ -96,6 +97,7 @@ export function CommandPalette({ isOpen, onClose, onOpenSearch, onOpenQuickSwitc
       },
       { id: 'backup', label: 'Download vault backup (.zip)', icon: Archive, perform: () => { onClose(); handleBackup() } },
       { id: 'vaults', label: 'Manage vaults', icon: FolderOpen, perform: () => { onClose(); navigate('/vaults') } },
+      { id: 'syntax-guide', label: 'Syntax guide', icon: HelpCircle, perform: () => { onClose(); navigate('/help') } },
       { id: 'shortcuts', label: 'Keyboard shortcuts', icon: Keyboard, perform: () => { onClose(); setShortcutsOpen(true) } },
       { id: 'sign-out', label: 'Sign out', icon: LogOut, perform: () => { onClose(); signOut() } },
     ]
