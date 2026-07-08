@@ -21,6 +21,7 @@ import {
   ChevronDown,
   Check,
   Settings2,
+  ClipboardPaste,
 } from 'lucide-react'
 import { useUIStore } from '../../stores/ui.store'
 import { useVaultStore } from '../../stores/vault.store'
@@ -34,6 +35,7 @@ import { FileTree } from '../sidebar/FileTree'
 import { TagBrowser } from '../sidebar/TagBrowser'
 import { LoadingSpinner } from '../common/LoadingSpinner'
 import { PromptModal } from '../common/PromptModal'
+import { WebClipModal } from '../common/WebClipModal'
 import type { FileTreeNode } from '../../types/vault.types'
 
 interface SidebarProps {
@@ -62,6 +64,7 @@ export function Sidebar({ nodes, isLoading, error, onRefresh }: SidebarProps) {
   const toastPromise = useToastStore((s) => s.promise)
   const navigate = useNavigate()
   const [openModal, setOpenModal] = useState<'note' | 'folder' | null>(null)
+  const [webClipOpen, setWebClipOpen] = useState(false)
   const [moreMenuOpen, setMoreMenuOpen] = useState(false)
   const [vaultMenuOpen, setVaultMenuOpen] = useState(false)
   const [isBackingUp, setIsBackingUp] = useState(false)
@@ -483,6 +486,17 @@ export function Sidebar({ nodes, isLoading, error, onRefresh }: SidebarProps) {
                               {isImporting ? 'Importing…' : 'Import Word document (.docx)'}
                             </span>
                           </button>
+                          <button
+                            type="button"
+                            className="flex w-full items-center gap-2.5 rounded px-2.5 py-2 text-left text-sm hover:bg-[var(--bg-tertiary)]"
+                            onClick={() => {
+                              setMoreMenuOpen(false)
+                              setWebClipOpen(true)
+                            }}
+                          >
+                            <ClipboardPaste size={16} style={{ color: 'var(--text-muted)' }} />
+                            <span style={{ color: 'var(--text-primary)' }}>Paste web page</span>
+                          </button>
                         </motion.div>
                       )}
                     </AnimatePresence>
@@ -532,6 +546,7 @@ export function Sidebar({ nodes, isLoading, error, onRefresh }: SidebarProps) {
         onSubmit={handleCreateFolder}
         onClose={() => setOpenModal(null)}
       />
+      <WebClipModal isOpen={webClipOpen} onClose={() => setWebClipOpen(false)} />
     </>
   )
 }
