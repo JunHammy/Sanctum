@@ -25,10 +25,16 @@ declare module 'turndown' {
 
   type TurndownPlugin = (service: TurndownService) => void
 
+  interface TurndownRule {
+    filter: string | string[] | ((node: HTMLElement, options: TurndownOptions) => boolean)
+    replacement: (content: string, node: HTMLElement, options: TurndownOptions) => string
+  }
+
   class TurndownService {
     constructor(options?: TurndownOptions)
     turndown(html: string): string
     use(plugin: TurndownPlugin | TurndownPlugin[]): this
+    addRule(key: string, rule: TurndownRule): this
   }
 
   export default TurndownService

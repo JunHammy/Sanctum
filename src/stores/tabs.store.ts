@@ -9,6 +9,13 @@ interface TabsState {
   // back to the bare /vault route), since this store doesn't know about
   // routing.
   closeTab: (fileId: string) => string | null
+  // Closes every id in `ids` at once — a deleted folder can cascade to
+  // several open tabs in one action, not just the single active one
+  // closeTab already handles. No "next id" return value, unlike closeTab:
+  // the caller (FileTreeNode's delete handler) already separately computes
+  // whether the currently active note was among the deleted ids and
+  // navigates accordingly.
+  closeTabs: (ids: string[]) => void
   // Drag-and-drop reordering — moves fileId to sit immediately before or
   // after targetId.
   moveTab: (fileId: string, targetId: string, side: 'before' | 'after') => void
@@ -39,6 +46,12 @@ export const useTabsStore = create<TabsState>()((set, get) => ({
     set({ openFileIds: next })
     if (next.length === 0) return null
     return next[Math.max(0, index - 1)]
+  },
+
+  closeTabs: (ids) => {
+    if (ids.length === 0) return
+    const idSet = new Set(ids)
+    set((s) => ({ openFileIds: s.openFileIds.filter((id) => !idSet.has(id)) }))
   },
 
   moveTab: (fileId, targetId, side) => {

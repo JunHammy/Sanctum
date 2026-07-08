@@ -4,9 +4,10 @@ import { ChevronRight, Trash2 } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useUIStore } from '../../stores/ui.store'
 import { useVaultStore } from '../../stores/vault.store'
+import { useTabsStore } from '../../stores/tabs.store'
 import { useToastStore } from '../../stores/toast.store'
 import { toUserMessage, logError } from '../../lib/error-messages'
-import { isDescendantOf } from '../../lib/vault-tree'
+import { isDescendantOf, collectFileIds } from '../../lib/vault-tree'
 import { DRAG_MIME, type DragPayload } from '../../lib/file-tree-dnd'
 import { useIsTouchDevice } from '../../hooks/useIsTouchDevice'
 import { ConfirmModal } from '../common/ConfirmModal'
@@ -34,6 +35,7 @@ export function FileTreeNode({ node, depth, parentId }: { node: FileTreeNodeType
   const moveNode = useVaultStore((s) => s.moveNode)
   const deleteNode = useVaultStore((s) => s.deleteNode)
   const fileTree = useVaultStore((s) => s.fileTree)
+  const closeTabs = useTabsStore((s) => s.closeTabs)
   const showToast = useToastStore((s) => s.show)
   const isTouch = useIsTouchDevice()
   const { fileId: activeFileId } = useParams<{ fileId?: string }>()
@@ -54,6 +56,14 @@ export function FileTreeNode({ node, depth, parentId }: { node: FileTreeNodeType
       (activeFileId === node.id || (node.type === 'folder' && isDescendantOf(fileTree, node.id, activeFileId)))
     try {
       await deleteNode(node.id)
+      // Confirmed real bug: deleting a note (or a folder containing open
+      // notes) left its tab(s) behind in tabs.store — TabBar's own name
+      // lookup then fails against the now-gone fileTree entry and falls
+      // back to showing "Untitled" for something that no longer exists at
+      // all. Computed from `node` before deletion (collectFileIds walks
+      // its own subtree — a folder can close several tabs at once here,
+      // not just whichever one happened to be active).
+      closeTabs(collectFileIds(node))
       if (affectsActiveNote) navigate('/vault')
       showToast(`Deleted "${displayName}"`, 'success')
     } catch (err) {

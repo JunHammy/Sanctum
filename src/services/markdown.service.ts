@@ -97,6 +97,24 @@ function getRenderer(): MarkdownIt {
       .use(mediaEmbedPlugin) // YouTube/audio/PDF via ![](...) — anything else stays a plain <img>
       .use(headingIdPlugin)
       .use(sourceLinePlugin) // data-src-line on every top-level block, for scroll-to-line targeting
+
+    // A genuine http(s) link always means "leave the vault" here — in-vault
+    // note-to-note navigation goes through wikilinkPlugin's own .wikilink
+    // spans instead, never markdown-it's plain link syntax. Same-page
+    // fragment links (footnote back-references, "#cite_ref-1") and any
+    // relative href stay untouched, or they'd wrongly open in a new tab too.
+    const defaultLinkOpen =
+      renderer.renderer.rules.link_open ??
+      ((tokens, idx, options, _env, self) => self.renderToken(tokens, idx, options))
+    renderer.renderer.rules.link_open = (tokens, idx, options, env, self) => {
+      const token = tokens[idx]
+      const href = token.attrGet('href')
+      if (href && /^https?:\/\//i.test(href)) {
+        token.attrSet('target', '_blank')
+        token.attrSet('rel', 'noopener noreferrer')
+      }
+      return defaultLinkOpen(tokens, idx, options, env, self)
+    }
   }
   return renderer
 }

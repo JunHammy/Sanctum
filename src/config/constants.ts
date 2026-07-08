@@ -1,10 +1,11 @@
 export const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID
 
-// A small stateless Cloudflare Worker (see worker/) that holds the OAuth
-// client_secret server-side and does nothing else — Google's token
+// A small stateless Cloudflare Worker (see worker/) with two jobs: (1) the
+// OAuth client_secret proxy this was originally built for — Google's token
 // endpoint requires the secret for the authorization-code/refresh-token
 // exchange even with PKCE, and a secret can't live in a public frontend
-// bundle. Everything else about the auth flow runs client-side as before.
+// bundle; (2) a /fetch-url route the web clipper uses to get past the
+// browser's CORS restriction on fetching another site's HTML directly.
 export const AUTH_PROXY_URL = import.meta.env.VITE_AUTH_PROXY_URL
 
 // Full Drive access, not the narrower drive.file: the app needs to see

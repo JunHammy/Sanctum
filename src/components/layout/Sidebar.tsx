@@ -495,7 +495,7 @@ export function Sidebar({ nodes, isLoading, error, onRefresh }: SidebarProps) {
                             }}
                           >
                             <ClipboardPaste size={16} style={{ color: 'var(--text-muted)' }} />
-                            <span style={{ color: 'var(--text-primary)' }}>Paste web page</span>
+                            <span style={{ color: 'var(--text-primary)' }}>Import from the web</span>
                           </button>
                         </motion.div>
                       )}

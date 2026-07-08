@@ -33,6 +33,17 @@ function findNodeById(nodes: FileTreeNode[], id: string): FileTreeNode | null {
   return null
 }
 
+// Every note id within `node` — itself if it's a file, or every file
+// anywhere in its subtree if it's a folder (attachments excluded, they're
+// never tabs). Used when deleting a node to know which open tabs, if any,
+// need to close along with it — a folder delete can cascade to several
+// open tabs at once, not just the currently active one.
+export function collectFileIds(node: FileTreeNode): string[] {
+  if (node.type === 'file') return [node.id]
+  if (node.type !== 'folder') return []
+  return node.children.flatMap(collectFileIds)
+}
+
 // True if `descendantId` sits anywhere inside `ancestorId`'s own subtree —
 // used to block a folder being dragged into itself or one of its own
 // children, which would otherwise silently build an unreachable, self-

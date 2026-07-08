@@ -17,6 +17,29 @@ export async function importHtmlClip(html: string, title: string): Promise<strin
     codeBlockStyle: 'fenced',
     bulletListMarker: '-',
   }).use(gfm)
+
+  // Confirmed real bug from testing: MediaWiki (Wikipedia and any other
+  // wiki using the same math extension) renders LaTeX as a server-generated
+  // SVG <img>, with the raw LaTeX source sitting right there as the alt
+  // text for accessibility — e.g. alt="{\displaystyle a_{0}b_{0}+...}".
+  // Without this rule, turndown's default image handling converts that
+  // into a broken markdown image (`![{\displaystyle ...}](svg-url)`) that
+  // tries to fetch an SVG and shows garbled escaped LaTeX as alt text
+  // instead of rendering as actual math. This rule intercepts those images
+  // specifically and emits real $...$/$$...$$ KaTeX syntax instead — using
+  // the DOM node's raw alt attribute (not turndown's pre-escaped text),
+  // and returning the result directly bypasses turndown's usual
+  // underscore-escaping, which would otherwise corrupt LaTeX subscripts.
+  turndownService.addRule('mediawikiMath', {
+    filter: (node) => node.nodeName === 'IMG' && /^\{\\displaystyle[\s\S]*\}$/.test(node.getAttribute('alt')?.trim() ?? ''),
+    replacement: (_content, node) => {
+      const alt = node.getAttribute('alt')?.trim() ?? ''
+      const latex = alt.replace(/^\{\\displaystyle\s*/, '').replace(/\}$/, '')
+      const isDisplay = node.className.includes('display')
+      return isDisplay ? `\n\n$$${latex}$$\n\n` : `$${latex}$`
+    },
+  })
+
   const markdown = turndownService.turndown(html)
 
   return useVaultStore.getState().createNoteWithContent(title, markdown)
