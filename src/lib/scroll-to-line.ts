@@ -1,4 +1,5 @@
 import { useNoteStore } from '../stores/note.store'
+import { useNetworkStore } from '../stores/network.store'
 
 const READ_MODE_SELECTOR = '[data-src-line]'
 const EDIT_MODE_SELECTOR = '[data-line]'
@@ -123,6 +124,14 @@ export function scrollToLineWithFlash(selector: string, line: number) {
 // nothing wrong ever gets painted in the first place.
 export function toggleReadModePreservingScroll() {
   const { isReadMode, toggleReadMode, setPendingScrollAnchor } = useNoteStore.getState()
+  // The one real entry point for leaving Read mode (this function backs
+  // both ReadEditToggle's click and NoteView's Ctrl+E shortcut) — refusing
+  // the read→edit transition here is enough to lock down editing everywhere,
+  // since PropertiesPanel's every editable affordance is already gated by
+  // isReadMode too. A user already mid-edit when connectivity drops isn't
+  // forced back to Read mode here (that would risk feeling like data loss);
+  // saveNote() itself just silently no-ops offline instead.
+  if (isReadMode && !useNetworkStore.getState().isOnline) return
   const currentSelector = isReadMode ? READ_MODE_SELECTOR : EDIT_MODE_SELECTOR
   const anchor = findTopmostVisible(currentSelector)
   const anchorLine = anchor ? lineOf(anchor) : NaN

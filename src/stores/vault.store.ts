@@ -3,6 +3,7 @@ import * as driveService from '../services/drive.service'
 import * as searchService from '../services/search.service'
 import * as tagsService from '../services/tags.service'
 import * as backlinksService from '../services/backlinks.service'
+import * as cacheService from '../services/cache.service'
 import { useSearchStore } from './search.store'
 import { useBacklinksStore } from './backlinks.store'
 import { useTagsStore } from './tags.store'
@@ -10,7 +11,7 @@ import { useTabsStore } from './tabs.store'
 import { useNoteStore } from './note.store'
 import { useToastStore } from './toast.store'
 import { useVaultPreferenceStore } from './vault-preference.store'
-import { toUserMessage, logError } from '../lib/error-messages'
+import { toUserMessage, logError, isOfflineError } from '../lib/error-messages'
 import type { VaultMeta, DriveFile } from '../services/drive.service'
 import type { FileTreeNode } from '../types/vault.types'
 
@@ -26,6 +27,13 @@ interface VaultState {
   fileTree: FileTreeNode[]
   isLoading: boolean
   error: string | null
+  // True whenever the currently-displayed vaults/fileTree came from
+  // cache.service.ts rather than a fresh network response — reset to false
+  // on every successful network load. Deliberately a separate flag from
+  // `error` rather than overloading it: Sidebar's render guard is
+  // `!isLoading && !error`, so a successful cache fallback must leave
+  // `error` null or the whole tree would render as if still loading/broken.
+  isOfflineFallback: boolean
   loadVault: () => Promise<void>
   switchVault: (vaultId: string) => Promise<void>
   createVault: (name: string) => Promise<void>
@@ -202,7 +210,11 @@ async function loadActiveVaultTree(get: () => VaultState, set: (partial: Partial
     // (upsert-only indexing never prunes documents that don't belong).
     if (get().activeVaultId !== requestedVaultId) return
     const fileTree = buildFileTree(files, requestedVaultId)
-    set({ fileTree, isLoading: false })
+    set({ fileTree, isLoading: false, isOfflineFallback: false })
+    // Fire-and-forget write-through — lets the sidebar render offline the
+    // next time this vault can't be reached, same convention as the
+    // buildIndex/buildMap calls just below it not blocking on completion.
+    cacheService.setCachedFileTree(requestedVaultId, fileTree)
     // Fire-and-forget — indexing note bodies for search/backlinks/tags
     // shouldn't block the sidebar from rendering the tree it already has.
     useSearchStore.getState().buildIndex(fileTree)
@@ -210,6 +222,24 @@ async function loadActiveVaultTree(get: () => VaultState, set: (partial: Partial
     useTagsStore.getState().buildMap(fileTree)
   } catch (err) {
     if (get().activeVaultId !== requestedVaultId) return
+    if (isOfflineError(err)) {
+      const cachedTree = await cacheService.getCachedFileTree(requestedVaultId)
+      if (get().activeVaultId !== requestedVaultId) return // re-check after the await
+      if (cachedTree) {
+        set({ fileTree: cachedTree, isLoading: false, isOfflineFallback: true, error: null })
+        // Still index the cached tree — these calls already tolerate
+        // reading through cache.service.ts's own content store per-note
+        // (see search.service.ts), so search/tags/backlinks stay usable
+        // offline too, not just the tree itself.
+        useSearchStore.getState().buildIndex(cachedTree)
+        useBacklinksStore.getState().buildMap(cachedTree)
+        useTagsStore.getState().buildMap(cachedTree)
+        return
+      }
+      const message = "This vault hasn't been opened on this device before, so it isn't available offline — connect to load it."
+      set({ isLoading: false, error: message, isOfflineFallback: false })
+      return
+    }
     const message = toUserMessage(err, 'Could not load your vault from Google Drive.')
     logError('vault.loadActiveVaultTree', err)
     useToastStore.getState().show(message, 'error')
@@ -225,6 +255,7 @@ export const useVaultStore = create<VaultState>()((set, get) => ({
   fileTree: [],
   isLoading: false,
   error: null,
+  isOfflineFallback: false,
 
   loadVault: async () => {
     set({ isLoading: true, error: null })
@@ -243,6 +274,7 @@ export const useVaultStore = create<VaultState>()((set, get) => ({
           rootFolderId: null,
           fileTree: [],
           isLoading: false,
+          isOfflineFallback: false,
         })
         return
       }
@@ -250,9 +282,36 @@ export const useVaultStore = create<VaultState>()((set, get) => ({
       const preferred = useVaultPreferenceStore.getState().activeVaultId
       const activeVaultId = preferred && vaults.some((v) => v.id === preferred) ? preferred : vaults[0].id
       useVaultPreferenceStore.getState().setActiveVaultId(activeVaultId)
-      set({ containerFolderId: container.id, vaults, activeVaultId, rootFolderId: activeVaultId })
+      set({ containerFolderId: container.id, vaults, activeVaultId, rootFolderId: activeVaultId, isOfflineFallback: false })
+      cacheService.setCachedVaults(container.id, vaults) // fire-and-forget write-through
       await loadActiveVaultTree(get, set)
     } catch (err) {
+      if (isOfflineError(err)) {
+        const cached = await cacheService.getCachedVaults()
+        if (cached) {
+          const preferred = useVaultPreferenceStore.getState().activeVaultId
+          const activeVaultId =
+            preferred && cached.vaults.some((v) => v.id === preferred) ? preferred : (cached.vaults[0]?.id ?? null)
+          set({
+            containerFolderId: cached.containerFolderId,
+            vaults: cached.vaults,
+            activeVaultId,
+            rootFolderId: activeVaultId,
+            isLoading: false,
+            isOfflineFallback: true,
+            error: null,
+          })
+          if (activeVaultId) await loadActiveVaultTree(get, set)
+          else set({ isLoading: false })
+          return
+        }
+        set({
+          isLoading: false,
+          isOfflineFallback: false,
+          error: "You're offline and haven't opened any vault on this device yet — connect to load your vaults.",
+        })
+        return
+      }
       const message = toUserMessage(err, 'Could not load your vault from Google Drive.')
       logError('vault.loadVault', err)
       useToastStore.getState().show(message, 'error')
@@ -298,6 +357,7 @@ export const useVaultStore = create<VaultState>()((set, get) => ({
       searchService.clearVaultCache(vaultId),
       tagsService.clearVaultCache(vaultId),
       backlinksService.clearVaultCache(vaultId),
+      cacheService.clearCachedFileTree(vaultId),
     ])
     const remaining = vaults.filter((v) => v.id !== vaultId)
     set({ vaults: remaining })
@@ -374,6 +434,7 @@ export const useVaultStore = create<VaultState>()((set, get) => ({
       fileTree: [],
       isLoading: false,
       error: null,
+      isOfflineFallback: false,
     })
   },
 }))

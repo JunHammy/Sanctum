@@ -126,19 +126,22 @@ export function MarkdownReader({ html, currentFileId }: MarkdownReaderProps) {
   }
 
   return (
-    <div className="flex items-start gap-1">
-      {/* Invisible spacer matching Block.tsx's gutter width exactly (same
-          w-7 + gap-1) — without this, the text content column is narrower
-          in Edit mode (which reserves that space for the drag handle/add
-          button) than in Read mode (which didn't reserve anything),
-          causing a visible reflow/width jump on every toggle. */}
-      <div className="w-7 shrink-0" aria-hidden="true" />
-      <div
-        ref={containerRef}
-        className="markdown-body min-w-0 flex-1"
-        onClick={handleClick}
-        dangerouslySetInnerHTML={{ __html: html }}
-      />
-    </div>
+    // No longer reserving Block.tsx's w-7 gutter here (a prior deliberate
+    // choice to keep Read/Edit pixel-identical, avoiding a reflow on
+    // toggle) — confirmed via testing that it was pushing every note's
+    // actual text ~32px right of where the header's icons start, reading as
+    // "nothing on the page lines up" on every single note, which is a much
+    // more constant, visible problem than the brief one-time text shift
+    // that now happens when toggling into Edit mode (a deliberate, in-
+    // frequent user action, not something seen on every page load).
+    <div
+      ref={containerRef}
+      // px-2, plain and symmetric by construction (Tailwind's px-* always
+      // applies the exact same value to both sides) — a small breathing-room
+      // margin now that this no longer relies on the removed gutter spacer.
+      className="markdown-body px-2"
+      onClick={handleClick}
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
   )
 }

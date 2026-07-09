@@ -33,3 +33,19 @@ export function toUserMessage(err: unknown, fallback: string): string {
 export function logError(context: string, err: unknown): void {
   console.error(`[Sanctum:${context}]`, err)
 }
+
+// Distinguishes "the network is genuinely unreachable" from a real Drive
+// error (a response was received and something about the request was
+// rejected). A `fetch()` that never got a response rejects with a plain
+// TypeError — that's the browser's own signal for connectivity failure, as
+// opposed to a DriveApiError/other Error, which means the server actually
+// responded. Checked first via navigator.onLine since that's a faster,
+// synchronous read of the same fact when it's available. Used by
+// vault.store.ts, note.store.ts, and auth.store.ts to decide whether to fall
+// back to a cached read (offline) or surface the error as-is (a real
+// failure) — reading navigator.onLine directly rather than importing
+// network.store.ts since lib/ files in this codebase don't import stores.
+export function isOfflineError(err: unknown): boolean {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) return true
+  return err instanceof TypeError
+}

@@ -1,12 +1,15 @@
 import { create } from 'zustand'
 import * as driveService from '../services/drive.service'
+import * as cacheService from '../services/cache.service'
 import { renderNote, renderBody, serializeFrontmatter } from '../services/markdown.service'
 import { useSearchStore } from './search.store'
 import { useBacklinksStore } from './backlinks.store'
 import { useTagsStore } from './tags.store'
 import { useVaultStore } from './vault.store'
 import { useToastStore } from './toast.store'
-import { toUserMessage, logError } from '../lib/error-messages'
+import { useNetworkStore } from './network.store'
+import { toUserMessage, logError, isOfflineError } from '../lib/error-messages'
+import { findFileModifiedTime } from '../lib/vault-tree'
 
 const AUTO_SAVE_DELAY_MS = 3000
 const MAX_UNDO_ENTRIES = 50
@@ -28,6 +31,11 @@ interface NoteState {
   isDirty: boolean
   isSaving: boolean
   error: string | null
+  // True when the currently-displayed note came from cache.service.ts
+  // rather than a fresh network read. Purely informational — editing is
+  // gated globally by network.store's isOnline, independent of whether this
+  // particular note happens to be showing cached content.
+  isOfflineContent: boolean
   undoStack: NoteSnapshot[]
   redoStack: NoteSnapshot[]
   // Incremented on every undo/redo. BlockEditor is deliberately uncontrolled
@@ -95,6 +103,29 @@ function captureUndoSnapshotIfNeeded(get: () => NoteState) {
   pendingUndoSnapshot = { rawBody, frontmatter, frontmatterBlock }
 }
 
+// Shared by openNote's two paths (already offline when called, or a network
+// read that just failed with a connectivity-shaped error) — falls back to
+// whatever cache.service.ts has for this note, or an honest "not available
+// offline" error if it was never opened on this device. Re-checks
+// activeNoteId after its own await (the same staleness-guard convention
+// vault.store.ts's loadActiveVaultTree already uses) since a rapid second
+// openNote call for a different note could otherwise land here late and
+// overwrite what's now supposed to be showing.
+async function loadNoteFromCache(get: () => NoteState, set: (partial: Partial<NoteState>) => void, fileId: string) {
+  const cached = await cacheService.getCachedContent(fileId)
+  if (get().activeNoteId !== fileId) return
+  if (cached) {
+    const { html, frontmatter, frontmatterBlock, rawBody } = renderNote(cached.raw)
+    set({ html, frontmatter, frontmatterBlock, rawBody, isLoading: false, isOfflineContent: true, error: null })
+    return
+  }
+  set({
+    isLoading: false,
+    isOfflineContent: false,
+    error: "This note hasn't been opened on this device before, so it isn't available offline — connect to load it.",
+  })
+}
+
 function scheduleAutoSave(get: () => NoteState, set: (partial: Partial<NoteState>) => void, save: () => void) {
   if (autoSaveTimer) clearTimeout(autoSaveTimer)
   autoSaveTimer = setTimeout(() => {
@@ -118,6 +149,7 @@ export const useNoteStore = create<NoteState>()((set, get) => ({
   isDirty: false,
   isSaving: false,
   error: null,
+  isOfflineContent: false,
   undoStack: [],
   redoStack: [],
   undoVersion: 0,
@@ -158,11 +190,26 @@ export const useNoteStore = create<NoteState>()((set, get) => ({
       // whatever note opens next and scroll it to an unrelated line.
       pendingScrollAnchor: null,
     })
+    if (!useNetworkStore.getState().isOnline) {
+      await loadNoteFromCache(get, set, fileId)
+      return
+    }
+
     try {
       const raw = await driveService.readFile(fileId)
       const { html, frontmatter, frontmatterBlock, rawBody } = renderNote(raw)
-      set({ html, frontmatter, frontmatterBlock, rawBody, isLoading: false })
+      set({ html, frontmatter, frontmatterBlock, rawBody, isLoading: false, isOfflineContent: false })
+      // Fire-and-forget write-through — closes the gap where this store's
+      // own read path never touched cache.service.ts at all, while
+      // search/tags/backlinks silently did as a side effect of indexing.
+      // Both now read *and* write the same cache, so they stay in sync.
+      const modifiedTime = findFileModifiedTime(useVaultStore.getState().fileTree, fileId)
+      if (modifiedTime) cacheService.setCachedContent(fileId, { raw, modifiedTime })
     } catch (err) {
+      if (isOfflineError(err)) {
+        await loadNoteFromCache(get, set, fileId)
+        return
+      }
       const message = toUserMessage(err, 'Could not load this note from Google Drive.')
       logError('note.openNote', err)
       useToastStore.getState().show(message, 'error')
@@ -238,6 +285,14 @@ export const useNoteStore = create<NoteState>()((set, get) => ({
   saveNote: async () => {
     const { activeNoteId, frontmatterBlock, rawBody, isDirty } = get()
     if (!activeNoteId || !isDirty) return
+    // Silent no-op while offline — checked up front rather than letting the
+    // driveService.updateFile call attempt and throw via assertOnline. This
+    // is what keeps autosave from spamming a toast every 3s while the user
+    // keeps typing offline: isDirty stays true (so "Unsaved changes" keeps
+    // showing honestly), and the pending edit is picked up automatically by
+    // the next autosave tick after reconnecting, or the reconnect hook's
+    // explicit flush.
+    if (!useNetworkStore.getState().isOnline) return
 
     set({ isSaving: true, error: null })
     try {
@@ -283,6 +338,7 @@ export const useNoteStore = create<NoteState>()((set, get) => ({
       isDirty: false,
       isSaving: false,
       error: null,
+      isOfflineContent: false,
       undoStack: [],
       redoStack: [],
       undoVersion: 0,

@@ -2,10 +2,23 @@ export interface Env {
   GOOGLE_CLIENT_SECRET: string
 }
 
-// Origins allowed to call this proxy — the dev server and the deployed
-// GitHub Pages site. Anything else gets no Access-Control-Allow-Origin
-// header, which the browser then blocks on its own.
-const ALLOWED_ORIGINS = new Set(['http://localhost:5173', 'https://junhammy.github.io'])
+// Origins allowed to call this proxy — the deployed GitHub Pages site, plus
+// any localhost port for local dev/testing. Any *localhost* port (not just
+// 5173) is allowed rather than one hardcoded value: `vite preview` (used to
+// exercise the production build + service worker locally, since the dev
+// server never registers one) picks whatever port is free, which isn't
+// always 5173 — confirmed as a real blocker during offline-mode testing,
+// where the token exchange silently failed as a plain "Failed to fetch"
+// (a CORS rejection gives no other detail) against a preview server running
+// on a different port. No client_secret exposure risk either way — that
+// stays server-side in this Worker's own env regardless of which origin is
+// allowed to call it.
+const ALLOWED_ORIGINS = new Set(['https://junhammy.github.io'])
+const LOCALHOST_ORIGIN = /^http:\/\/localhost:\d+$/
+
+function isAllowedOrigin(origin: string): boolean {
+  return ALLOWED_ORIGINS.has(origin) || LOCALHOST_ORIGIN.test(origin)
+}
 
 // The only two grant types Sanctum's auth flow ever legitimately sends —
 // this proxy isn't a general-purpose Google token endpoint passthrough.
@@ -13,7 +26,7 @@ const ALLOWED_GRANT_TYPES = new Set(['authorization_code', 'refresh_token'])
 
 function corsHeaders(origin: string | null): HeadersInit {
   return {
-    'Access-Control-Allow-Origin': origin && ALLOWED_ORIGINS.has(origin) ? origin : '',
+    'Access-Control-Allow-Origin': origin && isAllowedOrigin(origin) ? origin : '',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type',
     Vary: 'Origin',

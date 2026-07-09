@@ -93,10 +93,12 @@ export const Block = memo(function Block({
           Up/Down buttons instead of a drag handle, while desktop keeps the
           hover-revealed drag-to-reorder interaction. */}
       {/* Fixed width (not sized to its own content) so this column occupies
-          exactly the same space whether the icons are showing or not —
-          MarkdownReader.tsx reserves an identical-width invisible spacer in
-          Read mode, so the actual text content column never shifts width
-          or reflows when toggling between the two modes. */}
+          exactly the same space whether the icons are showing or not.
+          MarkdownReader.tsx no longer mirrors this gutter in Read mode —
+          confirmed via testing that doing so pushed every note's text
+          visibly out of alignment with the header above it on every single
+          page view, which was a worse problem than the small one-time
+          reflow that now happens when toggling into Edit mode. */}
       <div
         className={`flex w-7 shrink-0 flex-col items-center gap-0.5 pt-0.5 transition-opacity select-none ${
           isTouch ? 'opacity-70' : 'opacity-0 group-hover:opacity-100'

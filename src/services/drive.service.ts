@@ -1,6 +1,7 @@
 import { useAuthStore } from '../stores/auth.store'
 import { useVaultStore } from '../stores/vault.store'
 import { useNoteStore } from '../stores/note.store'
+import { useNetworkStore } from '../stores/network.store'
 import * as driveApi from '../lib/drive-api'
 import { DriveApiError, FOLDER_MIME } from '../lib/drive-api'
 import type { DriveFile, DriveRevision } from '../lib/drive-api'
@@ -24,6 +25,17 @@ function getToken(): string {
   const token = useAuthStore.getState().token
   if (!token) throw new Error('Not signed in')
   return token
+}
+
+// Read-only offline mode (MP §21): every mutation below calls this first, so
+// an offline write fails immediately with a clean, honest message instead of
+// either a raw failed-fetch TypeError or (worse) silently hanging until the
+// browser's own request timeout. Reads (listAllFiles, readFile, etc.) are
+// deliberately NOT guarded — they need to actually attempt the network call
+// so vault.store.ts/note.store.ts's isOfflineError-based cache-fallback logic
+// has a real failure to catch.
+function assertOnline(): void {
+  if (!useNetworkStore.getState().isOnline) throw new Error("You're offline — read-only until reconnected.")
 }
 
 async function withAuth<T>(fn: (token: string) => Promise<T>): Promise<T> {
@@ -50,10 +62,12 @@ export function readFileBlob(fileId: string): Promise<Blob> {
 }
 
 export function updateFile(fileId: string, content: string): Promise<DriveFile> {
+  assertOnline()
   return withAuth((token) => driveApi.updateFile(token, fileId, content))
 }
 
 export function findOrCreateContainerFolder(): Promise<DriveFile> {
+  assertOnline()
   return withAuth(async (token) => {
     const existing = await driveApi.findFolderByName(token, CONTAINER_FOLDER_NAME)
     if (existing) return existing
@@ -67,6 +81,7 @@ export function findOrCreateContainerFolder(): Promise<DriveFile> {
 // not a copy, so file ids/revision history/sharing all survive untouched).
 // A container whose children are already all folders is left alone.
 export async function migrateFlatVaultIfNeeded(containerId: string): Promise<void> {
+  assertOnline()
   return withAuth(async (token) => {
     const children = await driveApi.listChildren(token, containerId)
     if (children.length === 0 || children.every((c) => c.mimeType === FOLDER_MIME)) return
@@ -85,6 +100,7 @@ export function listVaults(containerId: string): Promise<VaultMeta[]> {
 }
 
 export function createVaultFolder(containerId: string, name: string): Promise<VaultMeta> {
+  assertOnline()
   return withAuth(async (token) => {
     const folder = await driveApi.createFolder(token, name, containerId)
     return { id: folder.id, name: folder.name }
@@ -92,6 +108,7 @@ export function createVaultFolder(containerId: string, name: string): Promise<Va
 }
 
 export function renameVaultFolder(vaultId: string, name: string): Promise<VaultMeta> {
+  assertOnline()
   return withAuth(async (token) => {
     const folder = await driveApi.renameFile(token, vaultId, name)
     return { id: folder.id, name: folder.name }
@@ -105,14 +122,17 @@ function getVaultRootId(): string {
 }
 
 export function createNote(name: string, content: string): Promise<DriveFile> {
+  assertOnline()
   return withAuth((token) => driveApi.createFile(token, getVaultRootId(), name, content))
 }
 
 export function createFolder(name: string): Promise<DriveFile> {
+  assertOnline()
   return withAuth((token) => driveApi.createFolder(token, name, getVaultRootId()))
 }
 
 export function findOrCreateAssetsFolder(): Promise<DriveFile> {
+  assertOnline()
   return withAuth(async (token) => {
     const rootId = getVaultRootId()
     const existing = await driveApi.findFolderByName(token, ASSETS_FOLDER_NAME, rootId)
@@ -135,6 +155,7 @@ function slugify(text: string): string {
 // as ![](filename) — more identifiable browsing the assets/ folder directly
 // than a raw ${Date.now()}-${file.name} prefix.
 export async function uploadImage(file: File): Promise<string> {
+  assertOnline()
   const title = useNoteStore.getState().frontmatter.title
   const slug = slugify(typeof title === 'string' ? title : 'note')
   const shortId = Math.random().toString(36).slice(2, 8)
@@ -152,6 +173,7 @@ export async function uploadImage(file: File): Promise<string> {
 // which doesn't make sense for a flow like DOCX import that's creating a
 // brand new note and has no "current note" to speak of yet.
 export function uploadAttachment(parentId: string, filename: string, blob: Blob): Promise<DriveFile> {
+  assertOnline()
   return withAuth((token) => driveApi.uploadBinary(token, parentId, filename, blob))
 }
 
@@ -164,9 +186,11 @@ export function readRevision(fileId: string, revisionId: string): Promise<string
 }
 
 export function moveFile(fileId: string, newParentId: string, oldParentId: string): Promise<DriveFile> {
+  assertOnline()
   return withAuth((token) => driveApi.moveFile(token, fileId, newParentId, oldParentId))
 }
 
 export function trashFile(fileId: string): Promise<void> {
+  assertOnline()
   return withAuth((token) => driveApi.trashFile(token, fileId))
 }

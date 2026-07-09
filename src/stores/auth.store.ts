@@ -6,7 +6,7 @@ import { useNoteStore } from './note.store'
 import { useVaultStore } from './vault.store'
 import { useVaultPreferenceStore } from './vault-preference.store'
 import { useToastStore } from './toast.store'
-import { logError } from '../lib/error-messages'
+import { logError, isOfflineError } from '../lib/error-messages'
 
 // Only the Drive scope actually gates API calls — userinfo scopes aren't
 // worth failing a refresh over.
@@ -35,6 +35,12 @@ interface AuthState {
   // now, not the every-hour default it used to be back when background
   // renewal went through a popup that browsers always blocked.
   needsReconnect: boolean
+  // True for the whole popup+token-exchange round trip — LoginButton reads
+  // this to show a spinner. Confirmed real gap from testing: clicking "Sign
+  // in with Google" gave zero feedback until the popup actually appeared
+  // (or, worse, until the whole flow finished), reading as an unresponsive
+  // button in the meantime.
+  isSigningIn: boolean
   signIn: () => Promise<void>
   signOut: () => void
   scheduleRefresh: () => void
@@ -65,9 +71,10 @@ export const useAuthStore = create<AuthState>()(
       error: null,
       hasHydrated: false,
       needsReconnect: false,
+      isSigningIn: false,
 
       signIn: async () => {
-        set({ error: null })
+        set({ error: null, isSigningIn: true })
         try {
           const { accessToken, refreshToken, expiresIn } = await authService.signIn()
           // Google's consent screen leaves the Drive-access checkbox
@@ -99,6 +106,8 @@ export const useAuthStore = create<AuthState>()(
           logError('auth.signIn', err)
           useToastStore.getState().show(message, 'error')
           set({ error: message })
+        } finally {
+          set({ isSigningIn: false })
         }
       },
 
@@ -146,12 +155,22 @@ export const useAuthStore = create<AuthState>()(
             set({ token: accessToken, tokenExpiresAt: Date.now() + expiresIn * 1000 })
             get().scheduleRefresh()
           } catch (err) {
+            logError('auth.scheduleRefresh', err)
+            // A renewal attempt that failed only because the network is
+            // unreachable isn't a real auth problem — the previous version
+            // of this code showed the "Reconnect" prompt for this case too,
+            // which was a false alarm every time a session merely went
+            // offline. Leave the current token in place either way;
+            // useNetworkStatus's reconnect hook retries this call the
+            // moment connectivity returns, which self-heals even a token
+            // that fully expired while offline before Drive ever gets a
+            // chance to 401 and force a real sign-out.
+            if (isOfflineError(err)) return
             // A real but rare failure now (refresh token revoked
             // externally, or its 7-day expiry hit while this app is
             // unverified/in Testing status) — leave the current token in
             // place and let the user reconnect with one click instead of
             // silently doing nothing until it expires.
-            logError('auth.scheduleRefresh', err)
             set({ needsReconnect: true })
             useToastStore.getState().show('Your session needs a quick reconnect to keep syncing — click "Reconnect" up top.', 'info')
           }

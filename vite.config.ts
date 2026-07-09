@@ -12,6 +12,23 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       workbox: {
+        // oauth-callback.html is a real standalone static page (Google
+        // redirects the sign-in popup straight to it), not a React route —
+        // Workbox's default NavigationRoute SPA fallback (needed so a hard
+        // refresh on e.g. /vault/note/:id doesn't 404) intercepts EVERY
+        // navigation with no exceptions otherwise, silently serving
+        // index.html in its place. Confirmed as a real bug via testing:
+        // the sign-in popup showed the full Sanctum login screen instead of
+        // running the callback's postMessage-and-close logic, permanently
+        // stuck. Invisible until now because the service worker has never
+        // been active during any prior testing (dev server has none).
+        //
+        // No trailing `$` — Workbox tests this against pathname + search,
+        // and Google always appends `?state=...&code=...` to this URL, so
+        // an end-anchored regex never matches the real callback request
+        // (confirmed as the reason the first version of this fix didn't
+        // actually work).
+        navigateFallbackDenylist: [/\/oauth-callback\.html/],
         // plotly.js-dist-min is ~4.6MB unminified-equivalent (far past the
         // ~1MB the master plan estimated, and past workbox's own 2MB
         // per-file precache limit, which fails the build outright without

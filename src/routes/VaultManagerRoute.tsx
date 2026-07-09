@@ -6,6 +6,7 @@ import type { VaultStats } from '../stores/vault.store'
 import { useNoteStore } from '../stores/note.store'
 import { useUIStore } from '../stores/ui.store'
 import { useToastStore } from '../stores/toast.store'
+import { useNetworkStore } from '../stores/network.store'
 import * as driveService from '../services/drive.service'
 import { toUserMessage, logError } from '../lib/error-messages'
 import { Header } from '../components/layout/Header'
@@ -29,6 +30,7 @@ export function VaultManagerRoute() {
   const deleteVault = useVaultStore((s) => s.deleteVault)
   const resetNote = useNoteStore((s) => s.reset)
   const showToast = useToastStore((s) => s.show)
+  const isOnline = useNetworkStore((s) => s.isOnline)
   const navigate = useNavigate()
   const hasStarted = useRef(false)
   const [createOpen, setCreateOpen] = useState(false)
@@ -215,20 +217,22 @@ export function VaultManagerRoute() {
               <button
                 type="button"
                 aria-label={`Rename ${vault.name}`}
-                title="Rename vault"
-                className="rounded p-1.5 hover:opacity-80"
+                title={isOnline ? 'Rename vault' : 'Disabled while offline'}
+                className="rounded p-1.5 hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:opacity-30"
                 style={{ color: 'var(--text-muted)' }}
                 onClick={() => setRenameTarget({ id: vault.id, name: vault.name })}
+                disabled={!isOnline}
               >
                 <Pencil size={15} />
               </button>
               <button
                 type="button"
                 aria-label={`Delete ${vault.name}`}
-                title="Delete vault"
-                className="rounded p-1.5 hover:text-[var(--error)]"
+                title={isOnline ? 'Delete vault' : 'Disabled while offline'}
+                className="rounded p-1.5 hover:text-[var(--error)] disabled:cursor-not-allowed disabled:opacity-30"
                 style={{ color: 'var(--text-muted)' }}
                 onClick={() => setDeleteTarget({ id: vault.id, name: vault.name })}
+                disabled={!isOnline}
               >
                 <Trash2 size={15} />
               </button>
@@ -239,9 +243,11 @@ export function VaultManagerRoute() {
 
         <button
           type="button"
-          className="flex items-center justify-center gap-2 rounded-lg border border-dashed px-4 py-3 text-sm font-medium hover:opacity-80"
+          title={isOnline ? undefined : 'Disabled while offline'}
+          className="flex items-center justify-center gap-2 rounded-lg border border-dashed px-4 py-3 text-sm font-medium hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:opacity-50"
           style={{ borderColor: 'var(--border)', color: 'var(--accent-link)' }}
           onClick={() => setCreateOpen(true)}
+          disabled={!isOnline}
         >
           <Plus size={16} />
           New vault

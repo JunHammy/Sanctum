@@ -11,6 +11,22 @@ export function findFileName(nodes: FileTreeNode[], id: string): string | null {
   return null
 }
 
+// Used when a note is read from Drive to tag the cache.service.ts write-
+// through with the modifiedTime it was current as of, matching how
+// search.service.ts's buildIndex already tags its own cache writes from the
+// flat file list it has on hand — note.store.ts doesn't have that list, only
+// vault.store's tree, hence this lookup.
+export function findFileModifiedTime(nodes: FileTreeNode[], id: string): string | undefined {
+  for (const node of nodes) {
+    if (node.type === 'file' && node.id === id) return node.modifiedTime
+    if (node.type === 'folder') {
+      const found = findFileModifiedTime(node.children, id)
+      if (found) return found
+    }
+  }
+  return undefined
+}
+
 // Every folder id in the tree, recursively — used to drive "expand/collapse
 // all" (ui.store's expandAll needs the full set to expand into).
 export function collectFolderIds(nodes: FileTreeNode[]): string[] {

@@ -26,6 +26,7 @@ import {
 import { useUIStore } from '../../stores/ui.store'
 import { useVaultStore } from '../../stores/vault.store'
 import { useToastStore } from '../../stores/toast.store'
+import { useNetworkStore } from '../../stores/network.store'
 import { toUserMessage, logError } from '../../lib/error-messages'
 import { collectFolderIds } from '../../lib/vault-tree'
 import { DRAG_MIME, type DragPayload } from '../../lib/file-tree-dnd'
@@ -60,6 +61,7 @@ export function Sidebar({ nodes, isLoading, error, onRefresh }: SidebarProps) {
   const vaults = useVaultStore((s) => s.vaults)
   const activeVaultId = useVaultStore((s) => s.activeVaultId)
   const switchVault = useVaultStore((s) => s.switchVault)
+  const isOnline = useNetworkStore((s) => s.isOnline)
   const showToast = useToastStore((s) => s.show)
   const toastPromise = useToastStore((s) => s.promise)
   const navigate = useNavigate()
@@ -391,18 +393,22 @@ export function Sidebar({ nodes, isLoading, error, onRefresh }: SidebarProps) {
                   <button
                     type="button"
                     aria-label="New note"
-                    className="rounded p-1 hover:opacity-80"
+                    title={isOnline ? undefined : 'Disabled while offline'}
+                    className="rounded p-1 hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:opacity-30"
                     style={{ color: 'var(--accent-link)' }}
                     onClick={() => setOpenModal('note')}
+                    disabled={!isOnline}
                   >
                     <FilePlus size={14} />
                   </button>
                   <button
                     type="button"
                     aria-label="New folder"
-                    className="rounded p-1 hover:opacity-80"
+                    title={isOnline ? undefined : 'Disabled while offline'}
+                    className="rounded p-1 hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:opacity-30"
                     style={{ color: 'var(--accent-link)' }}
                     onClick={() => setOpenModal('folder')}
+                    disabled={!isOnline}
                   >
                     <FolderPlus size={14} />
                   </button>
@@ -475,7 +481,7 @@ export function Sidebar({ nodes, isLoading, error, onRefresh }: SidebarProps) {
                             type="button"
                             className="flex w-full items-center gap-2.5 rounded px-2.5 py-2 text-left text-sm hover:bg-[var(--bg-tertiary)] disabled:opacity-50"
                             onClick={handleImportClick}
-                            disabled={isImporting}
+                            disabled={isImporting || !isOnline}
                           >
                             <Upload
                               size={16}
@@ -488,11 +494,12 @@ export function Sidebar({ nodes, isLoading, error, onRefresh }: SidebarProps) {
                           </button>
                           <button
                             type="button"
-                            className="flex w-full items-center gap-2.5 rounded px-2.5 py-2 text-left text-sm hover:bg-[var(--bg-tertiary)]"
+                            className="flex w-full items-center gap-2.5 rounded px-2.5 py-2 text-left text-sm hover:bg-[var(--bg-tertiary)] disabled:opacity-50"
                             onClick={() => {
                               setMoreMenuOpen(false)
                               setWebClipOpen(true)
                             }}
+                            disabled={!isOnline}
                           >
                             <ClipboardPaste size={16} style={{ color: 'var(--text-muted)' }} />
                             <span style={{ color: 'var(--text-primary)' }}>Import from the web</span>
