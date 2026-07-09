@@ -64,6 +64,15 @@ export default defineConfig({
         display: 'standalone',
         icons: [
           { src: '/favicon.svg', sizes: 'any', type: 'image/svg+xml' },
+          { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+          { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+          // Separate maskable variants (not just `purpose: 'any maskable'` on
+          // the same file) — a maskable icon needs its content confined to a
+          // smaller safe zone so an OS-applied circular/rounded-square mask
+          // doesn't clip it, which would make the regular icon look
+          // needlessly zoomed-out everywhere that just wants `any`.
+          { src: '/icons/icon-maskable-192.png', sizes: '192x192', type: 'image/png', purpose: 'maskable' },
+          { src: '/icons/icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
       },
     }),
