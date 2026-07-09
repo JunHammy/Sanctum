@@ -3,9 +3,20 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
+// Shared with the manifest's icon paths below — confirmed real, pre-existing
+// bug via DevTools' Application > Manifest panel: every icon entry
+// (including the original favicon.svg one, not just the new PNGs) used an
+// absolute root path like `/favicon.svg`, which resolves to the domain
+// root. Since the app is actually served under this base path everywhere
+// (including production, GitHub Pages), that 404s outside of a coincidence
+// where the site happens to be hosted at the domain root. Deriving every
+// icon src from this one constant prevents the two from drifting apart
+// again the way they silently already had.
+const BASE = '/Sanctum/'
+
 // https://vite.dev/config/
 export default defineConfig({
-  base: '/Sanctum/',
+  base: BASE,
   plugins: [
     react(),
     tailwindcss(),
@@ -62,17 +73,24 @@ export default defineConfig({
         theme_color: '#17181a',
         background_color: '#17181a',
         display: 'standalone',
+        // No SVG entry — confirmed via testing that Chrome's manifest
+        // processor fails to load an SVG icon here (a known, common
+        // cross-browser inconsistency for SVG specifically inside the PWA
+        // manifest's `icons` array, unrelated to the tab favicon, which is
+        // a separate <link rel="icon"> mechanism in index.html that already
+        // works fine). The PNGs below already fully cover both regular and
+        // maskable install-icon needs at both required sizes, so there's no
+        // reason to keep an unreliable redundant entry around.
         icons: [
-          { src: '/favicon.svg', sizes: 'any', type: 'image/svg+xml' },
-          { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
-          { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+          { src: `${BASE}icons/icon-192.png`, sizes: '192x192', type: 'image/png', purpose: 'any' },
+          { src: `${BASE}icons/icon-512.png`, sizes: '512x512', type: 'image/png', purpose: 'any' },
           // Separate maskable variants (not just `purpose: 'any maskable'` on
           // the same file) — a maskable icon needs its content confined to a
           // smaller safe zone so an OS-applied circular/rounded-square mask
           // doesn't clip it, which would make the regular icon look
           // needlessly zoomed-out everywhere that just wants `any`.
-          { src: '/icons/icon-maskable-192.png', sizes: '192x192', type: 'image/png', purpose: 'maskable' },
-          { src: '/icons/icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+          { src: `${BASE}icons/icon-maskable-192.png`, sizes: '192x192', type: 'image/png', purpose: 'maskable' },
+          { src: `${BASE}icons/icon-maskable-512.png`, sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
       },
     }),
