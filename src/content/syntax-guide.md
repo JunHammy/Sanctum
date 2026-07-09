@@ -1,12 +1,30 @@
 # Sanctum Syntax Guide
 
-Sanctum notes are plain markdown, plus a handful of extra conventions for linking, tagging, and embedding content. Everything on this page is rendered live through the exact same pipeline every note uses — nothing here is a mockup.
+Sanctum notes are plain markdown, plus a handful of extra conventions for linking, tagging, and embedding content. Everything on this page is rendered live through the exact same pipeline every note uses — nothing here is a mockup. Every example below shows the raw markdown source first, then how it actually renders.
 
 ## Basic formatting
 
-**Bold**, *italic*, ~~strikethrough~~, and `inline code` all work exactly as you'd expect. So does ==highlighted text== — useful for flagging something to come back to.
+```markdown
+**Bold**, *italic*, ~~strikethrough~~, `inline code`, and ==highlighted text==.
+```
+
+Rendered: **Bold**, *italic*, ~~strikethrough~~, `inline code`, and ==highlighted text== — useful for flagging something to come back to.
 
 ### Lists
+
+```markdown
+- A bullet list
+- With a second item
+  - And a nested one
+
+1. A numbered list
+2. Second item
+
+- [ ] An unchecked task
+- [x] A completed task
+```
+
+Rendered:
 
 - A bullet list
 - With a second item
@@ -38,12 +56,34 @@ A link to a note that doesn't exist (yet) still renders, just as an unresolved l
 
 ## Tags
 
-Tags use a leading `#tag`, like #project or #todo or #reference. They show up automatically in the Tag Browser in the sidebar, and can also live in a note's frontmatter as a `tags:` list.
+```markdown
+#project #todo #reference
+```
+
+Rendered: #project #todo #reference
+
+Tags use a leading `#tag`. They show up automatically in the Tag Browser in the sidebar, and can also live in a note's frontmatter as a `tags:` list.
 
 ## Callouts
 
+```markdown
 > [!NOTE]
 > A plain note callout — the default when you don't specify a type.
+```
+
+Rendered:
+
+> [!NOTE]
+> A plain note callout — the default when you don't specify a type.
+
+The full syntax is a blockquote starting with `> [!TYPE] Optional Title`, then more `>` lines for the body. Every other type below follows the exact same shape, just with a different `TYPE` and an optional title after it:
+
+```markdown
+> [!TIP] Pro tip
+> Callouts can have a custom title, like this one.
+```
+
+Supported types, and how they render:
 
 > [!TIP] Pro tip
 > Callouts can have a custom title, like this one.
@@ -54,11 +94,21 @@ Tags use a leading `#tag`, like #project or #todo or #reference. They show up au
 > [!DANGER] Heads up
 > Something that could genuinely break if you're not careful.
 
-The full syntax is a blockquote starting with `> [!TYPE] Optional Title`, then more `>` lines for the body. Supported types: `NOTE`, `TIP`/`SUCCESS`, `WARNING`/`TODO`, `DANGER`/`IMPORTANT`, `QUESTION`/`EXAMPLE`/`ABSTRACT`.
+Full list: `NOTE`, `TIP`/`SUCCESS`, `WARNING`/`TODO`, `DANGER`/`IMPORTANT`, `QUESTION`/`EXAMPLE`/`ABSTRACT`.
 
 ## Code blocks
 
-Fenced code blocks get real syntax highlighting:
+Fenced code blocks (three backticks, optionally followed by a language name) get real syntax highlighting:
+
+````markdown
+```typescript
+function greet(name: string): string {
+  return `Hello, ${name}!`
+}
+```
+````
+
+Rendered:
 
 ```typescript
 function greet(name: string): string {
@@ -68,6 +118,16 @@ function greet(name: string): string {
 
 ## Tables
 
+```markdown
+| Feature | Works in Sanctum? |
+| --- | --- |
+| Wikilinks | Yes |
+| Tables | Yes (you're looking at one) |
+| Graph view | No — not planned |
+```
+
+Rendered:
+
 | Feature | Works in Sanctum? |
 | --- | --- |
 | Wikilinks | Yes |
@@ -76,7 +136,15 @@ function greet(name: string): string {
 
 ## Math
 
+```markdown
 Inline math like $E = mc^2$ works via a single `$...$`, and block math gets its own line:
+
+$$
+\int_0^\infty e^{-x^2} \, dx = \frac{\sqrt{\pi}}{2}
+$$
+```
+
+Rendered: inline math like $E = mc^2$ works via a single `$...$`, and block math gets its own line:
 
 $$
 \int_0^\infty e^{-x^2} \, dx = \frac{\sqrt{\pi}}{2}
@@ -84,7 +152,13 @@ $$
 
 ## Footnotes
 
+```markdown
 Here's a sentence with a footnote.[^1]
+
+[^1]: And here's the footnote itself, rendered at the bottom of the note.
+```
+
+Rendered: here's a sentence with a footnote.[^1]
 
 [^1]: And here's the footnote itself, rendered at the bottom of the note.
 
@@ -135,9 +209,55 @@ graph TD
 
 `plotly` and `chartjs` fenced blocks work the same way, each taking that library's own JSON config as the block's content.
 
+````markdown
+```chartjs
+{
+  "type": "bar",
+  "data": {
+    "labels": ["Mon", "Tue", "Wed"],
+    "datasets": [{ "label": "Notes written", "data": [3, 5, 2], "backgroundColor": "#6fa8c9" }]
+  }
+}
+```
+````
+
+Rendered live below — the JSON is exactly what gets passed to `new Chart(canvas, config)`, so anything valid in Chart.js's own config docs works here too:
+
+```chartjs
+{
+  "type": "bar",
+  "data": {
+    "labels": ["Mon", "Tue", "Wed"],
+    "datasets": [{ "label": "Notes written", "data": [3, 5, 2], "backgroundColor": "#6fa8c9" }]
+  }
+}
+```
+
+````markdown
+```plotly
+{
+  "data": [{ "x": [1, 2, 3], "y": [2, 6, 3], "type": "scatter" }],
+  "layout": { "title": { "text": "A simple line" } }
+}
+```
+````
+
+Rendered live below — `data` and `layout` map directly onto Plotly's own `Plotly.newPlot(el, data, layout)` call:
+
+```plotly
+{
+  "data": [{ "x": [1, 2, 3], "y": [2, 6, 3], "type": "scatter" }],
+  "layout": { "title": { "text": "A simple line" } }
+}
+```
+
 ## Images and media
 
-Images use plain markdown syntax — `![alt text](filename.png)` — resolved against your vault's `assets` folder automatically, no need to write a full path. YouTube links, audio files, and PDFs work the same `![]()` syntax; Sanctum detects what it's linking to and renders the right kind of embed (video player, audio player, or PDF preview) instead of a broken image icon.
+```markdown
+![alt text](filename.png)
+```
+
+Images use plain markdown syntax, resolved against your vault's `assets` folder automatically, no need to write a full path. YouTube links, audio files, and PDFs work the same `![]()` syntax; Sanctum detects what it's linking to and renders the right kind of embed (video player, audio player, or PDF preview) instead of a broken image icon.
 
 ## Note properties (frontmatter)
 
