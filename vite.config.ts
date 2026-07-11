@@ -14,9 +14,23 @@ import { VitePWA } from 'vite-plugin-pwa'
 // again the way they silently already had.
 const BASE = '/Sanctum/'
 
+// Fixed to Google's registered OAuth redirect origin (see AUTH_PROXY_URL /
+// the Cloudflare Worker's CORS allowlist, and Google Cloud Console's own
+// Authorized redirect URIs list) — `strictPort` makes Vite fail loudly with
+// a clear "port in use" error instead of silently incrementing to the next
+// free port (5174, 4174, 4175, ...) whenever something's still bound to
+// 4173. A silent port change is what kept causing OAuth to break with a
+// confusing "redirect_uri_mismatch"/"Failed to fetch" only discovered after
+// already being deep into testing — this makes that failure immediate and
+// obvious (the terminal just refuses to start) instead of surfacing three
+// steps later as a browser error with no obvious cause.
+const DEV_SERVER_OPTIONS = { port: 4173, strictPort: true } as const
+
 // https://vite.dev/config/
 export default defineConfig({
   base: BASE,
+  server: DEV_SERVER_OPTIONS,
+  preview: DEV_SERVER_OPTIONS,
   plugins: [
     react(),
     tailwindcss(),

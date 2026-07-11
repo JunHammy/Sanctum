@@ -81,6 +81,22 @@ export function BlockEditor({ value, onChange }: BlockEditorProps) {
     function handleMouseDown(e: MouseEvent) {
       const target = e.target as HTMLElement
       if (!target.closest(`[data-block-id="${activeId}"]`)) {
+        // Confirmed real bug via testing: a raw document-level mousedown
+        // listener can fire and deactivate the block before a still-
+        // focused input/textarea inside it (e.g. TableGridEditor's active
+        // cell) gets a chance to run its own onBlur — which is what
+        // actually commits that cell's pending edit. Losing that race
+        // silently discarded the edit entirely (reported as "a table
+        // column's content vanishing" after rapidly filling in several
+        // cells then clicking away). Forcing a synchronous blur here,
+        // *before* deactivating, guarantees the commit happens first
+        // regardless of event-ordering luck between two independent
+        // listeners — native .blur() calls fire their blur handler
+        // synchronously, not on some later tick.
+        const focused = document.activeElement as HTMLElement | null
+        if (focused && focused.closest(`[data-block-id="${activeId}"]`)) {
+          focused.blur()
+        }
         setActiveId(null)
       }
     }

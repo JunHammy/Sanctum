@@ -141,16 +141,82 @@
   margin: 0.75em 0;
 }
 
+/* Scrolls independently of the page — see the table_open/table_close
+   renderer override in markdown.service.ts for why this wrapper exists
+   instead of putting overflow-x directly on the table element (table
+   boxes don't reliably respect overflow the same way a block element
+   does across browsers). */
+.markdown-body .table-scroll {
+  overflow-x: auto;
+  margin: 1em 0;
+  cursor: grab;
+}
+
+/* Applied by useDragScrollTables while an actual drag is in progress —
+   disables text selection so dragging over cell text pans the table
+   instead of highlighting it. Deliberately not scoped under
+   .markdown-body — useDragScrollTables is also reused by
+   TableGridEditor's edit-mode grid, which lives outside that ancestor
+   (it's editor UI, not rendered note content). */
+.table-scroll.table-scroll-dragging {
+  cursor: grabbing;
+  user-select: none;
+}
+
+/* Wraps .table-scroll — see useTableExpand.ts. A plain positioning
+   anchor, not a visual box of its own, so the table still reads exactly
+   as it did before this wrapper existed. */
+.markdown-body .table-expand-wrapper {
+  position: relative;
+}
+
+.markdown-body .table-expand-btn {
+  position: absolute;
+  top: 0.5em;
+  right: 0.5em;
+  padding: 0.3em;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0.7;
+}
+
+.markdown-body .table-expand-btn:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+/* Hover-revealed only on devices that actually have real hover (mirrors
+   the isTouch/opacity-70-vs-opacity-0 pattern used everywhere else in the
+   app, just via CSS instead of JS since this button is injected into raw
+   HTML, not React). */
+@media (hover: hover) {
+  .markdown-body .table-expand-btn {
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+  .markdown-body .table-expand-wrapper:hover .table-expand-btn {
+    opacity: 1;
+  }
+}
+
 .markdown-body table {
   border-collapse: collapse;
   width: 100%;
-  margin: 1em 0;
 }
 
 .markdown-body th,
 .markdown-body td {
   border: 1px solid var(--border);
   padding: 0.4em 0.6em;
+  /* Below this, text stops being legible regardless of how much the
+     table shrinks — past it, auto table layout makes the table itself
+     wider than 100% and .table-scroll above takes over instead of
+     squeezing further. Matches TableGridEditor's own column floor in
+     Edit mode. */
+  min-width: 100px;
 }
 
 .markdown-body hr {

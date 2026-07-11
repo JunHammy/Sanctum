@@ -115,6 +115,17 @@ function getRenderer(): MarkdownIt {
       }
       return defaultLinkOpen(tokens, idx, options, env, self)
     }
+
+    // A wide table (many columns) sizes itself past 100% under the
+    // browser's normal auto table layout — GFM markdown gives no way to
+    // cap that. Wrapping in a scrollable div (GitHub's own approach)
+    // scopes any resulting overflow to just the table, matching the same
+    // "scroll the table, never the page" behavior TableGridEditor already
+    // enforces in Edit mode — this is the Read-mode equivalent, since Read
+    // mode renders through this same MarkdownIt instance, not through
+    // TableGridEditor at all.
+    renderer.renderer.rules.table_open = () => '<div class="table-scroll"><table>'
+    renderer.renderer.rules.table_close = () => '</table></div>'
   }
   return renderer
 }

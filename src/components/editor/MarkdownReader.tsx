@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, type MouseEvent } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useVaultStore } from '../../stores/vault.store'
 import { useNoteStore } from '../../stores/note.store'
@@ -10,6 +10,10 @@ import { useImageResolution } from '../../hooks/useImageResolution'
 import { useTransclusion } from '../../hooks/useTransclusion'
 import { useCharts } from '../../hooks/useCharts'
 import { useMediaEmbeds } from '../../hooks/useMediaEmbeds'
+import { useDragScrollTables } from '../../hooks/useDragScrollTables'
+import { useTableExpand } from '../../hooks/useTableExpand'
+import { useTableMinWidth } from '../../hooks/useTableMinWidth'
+import { Modal } from '../common/Modal'
 import { scrollToLineWithFlash, consumePendingScrollAnchor } from '../../lib/scroll-to-line'
 
 const READ_MODE_SELECTOR = '[data-src-line]'
@@ -44,11 +48,23 @@ export function MarkdownReader({ html, currentFileId }: MarkdownReaderProps) {
   const setPendingScroll = useNoteStore((s) => s.setPendingScroll)
   const activeNoteId = useNoteStore((s) => s.activeNoteId)
   const containerRef = useRef<HTMLDivElement>(null)
+  const expandedRef = useRef<HTMLDivElement>(null)
+  // The table currently shown in the fullscreen view, as a raw HTML string
+  // cloned from the .table-scroll element the expand button lives on — see
+  // useTableExpand for why this stays read-only rather than reusing
+  // TableGridEditor: Read mode has no notion of "activate a block" to hand
+  // off to.
+  const [expandedTableHtml, setExpandedTableHtml] = useState<string | null>(null)
 
   useImageResolution(containerRef, fileTree, isVaultLoading)
   useTransclusion(containerRef, fileTree)
   useCharts(containerRef)
   useMediaEmbeds(containerRef, fileTree)
+  useDragScrollTables(containerRef)
+  useTableMinWidth(containerRef)
+  useTableExpand(containerRef, setExpandedTableHtml)
+  useDragScrollTables(expandedRef)
+  useTableMinWidth(expandedRef)
 
   // Restores scroll position after switching *into* Read mode from Edit
   // (toggleReadModePreservingScroll in scroll-to-line.ts) — a no-op on a
@@ -134,14 +150,24 @@ export function MarkdownReader({ html, currentFileId }: MarkdownReaderProps) {
     // more constant, visible problem than the brief one-time text shift
     // that now happens when toggling into Edit mode (a deliberate, in-
     // frequent user action, not something seen on every page load).
-    <div
-      ref={containerRef}
-      // px-2, plain and symmetric by construction (Tailwind's px-* always
-      // applies the exact same value to both sides) — a small breathing-room
-      // margin now that this no longer relies on the removed gutter spacer.
-      className="markdown-body px-2"
-      onClick={handleClick}
-      dangerouslySetInnerHTML={{ __html: html }}
-    />
+    <>
+      <div
+        ref={containerRef}
+        // px-2, plain and symmetric by construction (Tailwind's px-* always
+        // applies the exact same value to both sides) — a small breathing-room
+        // margin now that this no longer relies on the removed gutter spacer.
+        className="markdown-body px-2"
+        onClick={handleClick}
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
+      <Modal
+        isOpen={expandedTableHtml !== null}
+        onClose={() => setExpandedTableHtml(null)}
+        title="Table (Esc or click outside to close)"
+        size="large"
+      >
+        <div ref={expandedRef} className="markdown-body" dangerouslySetInnerHTML={{ __html: expandedTableHtml ?? '' }} />
+      </Modal>
+    </>
   )
 }

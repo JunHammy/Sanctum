@@ -7,6 +7,18 @@ interface ModalProps {
   onClose: () => void
   title: string
   children: ReactNode
+  // 'large' is for content that needs real room (e.g. the table expand
+  // view) — near-viewport-sized instead of the default small dialog.
+  size?: 'default' | 'large'
+  // Stamped onto the portaled panel as `data-block-id` when set. Needed
+  // because this component portals to document.body — outside whatever
+  // DOM subtree the caller lives in — so an ancestor-scoped click-outside
+  // listener (like BlockEditor's `target.closest('[data-block-id=...]')`
+  // check) would otherwise see any click inside this modal as "outside"
+  // the block and deactivate it. `.closest()` walks the real DOM, so
+  // stamping the same attribute here is enough to keep it recognized as
+  // still part of that block despite the portal.
+  dataBlockId?: string
 }
 
 // AnimatePresence is what makes an *exit* transition possible at all here —
@@ -14,7 +26,7 @@ interface ModalProps {
 // the DOM the instant isOpen flips, with no chance to animate out. Reused
 // by PromptModal/SearchModal/QuickSwitcher/RevisionsPanel, so this one
 // change gives all of them a real open/close transition for free.
-export function Modal({ isOpen, onClose, title, children }: ModalProps) {
+export function Modal({ isOpen, onClose, title, children, size = 'default', dataBlockId }: ModalProps) {
   useEffect(() => {
     if (!isOpen) return
     function handleKeyDown(e: KeyboardEvent) {
@@ -46,7 +58,12 @@ export function Modal({ isOpen, onClose, title, children }: ModalProps) {
           transition={{ duration: 0.15 }}
         >
           <motion.div
-            className="w-full max-w-lg rounded-lg border p-6 shadow-lg"
+            data-block-id={dataBlockId}
+            className={
+              size === 'large'
+                ? 'flex max-h-[90vh] w-full max-w-[95vw] flex-col rounded-lg border p-6 shadow-lg'
+                : 'w-full max-w-lg rounded-lg border p-6 shadow-lg'
+            }
             style={{ background: 'var(--bg-primary)', borderColor: 'var(--border)' }}
             onClick={(e) => e.stopPropagation()}
             initial={{ opacity: 0, y: 8, scale: 0.98 }}
@@ -54,10 +71,19 @@ export function Modal({ isOpen, onClose, title, children }: ModalProps) {
             exit={{ opacity: 0, y: 8, scale: 0.98 }}
             transition={{ duration: 0.15 }}
           >
-            <h2 className="mb-3 text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+            <h2 className="mb-3 shrink-0 text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
               {title}
             </h2>
-            {children}
+            {size === 'large' ? (
+              // min-h-0 matters here for the same reason min-w-0 matters on
+              // ContentPane's <main> (see that file's comment) — this div is
+              // a flex item in a flex-col panel, so without it, tall content
+              // (a table with many rows) refuses to shrink and pushes the
+              // panel past max-h-[90vh] instead of scrolling inside it.
+              <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
+            ) : (
+              children
+            )}
           </motion.div>
         </motion.div>
       )}
