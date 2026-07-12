@@ -1,5 +1,13 @@
 import { create } from 'zustand'
 
+// A sentinel id for the Syntax Guide's tab — not a real vault file, but
+// openFileIds is just a plain string list with no validation against the
+// file tree, so it slots in exactly like any other tab id with no store
+// changes needed beyond this constant. TabBar.tsx special-cases this one
+// id for its label/icon/navigation target; everything else (open, close,
+// reorder, drag) treats it identically to a real note tab.
+export const HELP_TAB_ID = '__syntax-guide__'
+
 interface TabsState {
   openFileIds: string[]
   openTab: (fileId: string) => void

@@ -13,6 +13,23 @@ export function parseMathBlock(rawText: string): string | null {
   return match[1].trim()
 }
 
+// MathLive's <math-field> is already implicitly "in math mode" — pasting
+// text that still has its $$...$$ or $...$ markdown delimiters (e.g.
+// copied from a rendered note, or from this very page's own examples)
+// isn't LaTeX MathLive knows to unwrap; the $ characters would just get
+// inserted as literal, meaningless symbols. Strips exactly one matching
+// pair if the *whole* pasted string is wrapped in one, leaving anything
+// else (plain LaTeX with no delimiters, which is the common case, or text
+// that merely contains a $ without being wrapped by one) untouched.
+export function stripMathDelimiters(text: string): string {
+  const trimmed = text.trim()
+  const block = /^\$\$([\s\S]*)\$\$$/.exec(trimmed)
+  if (block) return block[1].trim()
+  const inline = /^\$([^$]*)\$$/.exec(trimmed)
+  if (inline) return inline[1].trim()
+  return text
+}
+
 export function serializeMathBlock(latex: string): string {
   const trimmed = latex.trim()
   // Confirmed real bug from testing: for empty content, `$$\n\n$$` puts a

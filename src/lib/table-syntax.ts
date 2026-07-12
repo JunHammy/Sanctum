@@ -117,6 +117,35 @@ export function parseTable(rawText: string): TableData | null {
   return { headers, alignments, rows }
 }
 
+// Detects a multi-cell paste (a table copied from elsewhere) so
+// TableGridEditor can fan it out across cells instead of dumping it as
+// flattened single-cell text — the previous behavior for *any* paste,
+// including ones that were clearly meant to fill a whole block of cells.
+// Two source formats: a markdown pipe-table (copied from another Sanctum
+// note, GitHub, etc. — parsed via parseTable itself, so this can never
+// disagree with what counts as "a table" elsewhere in this file) and
+// tab-separated values (what Excel/Google Sheets/Numbers put on the
+// clipboard when you copy a cell range — the standard, universal format
+// every spreadsheet app uses for this). Returns null for anything that
+// isn't clearly one of those two shapes, so a normal paste of plain prose
+// text (even multi-line, even containing a stray "|") still falls through
+// to ordinary single-cell paste behavior untouched.
+export function parseClipboardTable(text: string): string[][] | null {
+  const trimmed = text.replace(/\r\n/g, '\n').trim()
+  if (!trimmed) return null
+
+  const asMarkdownTable = parseTable(trimmed)
+  if (asMarkdownTable) return [asMarkdownTable.headers, ...asMarkdownTable.rows]
+
+  // A tab is a strong, low-false-positive signal here — it's not a
+  // character normal prose ever contains, but is exactly what every
+  // spreadsheet app puts between copied cells (single-line paste = one
+  // pasted row, not just one cell, if it contains a tab at all).
+  const lines = trimmed.split('\n')
+  if (!lines.some((line) => line.includes('\t'))) return null
+  return lines.map((line) => line.split('\t'))
+}
+
 function escapeCell(text: string): string {
   return text.replace(/\|/g, '\\|')
 }

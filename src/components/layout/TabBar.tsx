@@ -1,11 +1,18 @@
 import { useState, type DragEvent, type MouseEvent } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
-import { X } from 'lucide-react'
-import { useTabsStore } from '../../stores/tabs.store'
+import { useNavigate, useParams, useLocation } from 'react-router-dom'
+import { X, BookOpen } from 'lucide-react'
+import { useTabsStore, HELP_TAB_ID } from '../../stores/tabs.store'
 import { useVaultStore } from '../../stores/vault.store'
 import { findFileName } from '../../lib/vault-tree'
 
 const DRAG_MIME = 'application/x-sanctum-tab'
+
+// The one non-file tab id (see tabs.store.ts) maps to a fixed path instead
+// of /vault/note/:id — everything else about it (open, close, reorder,
+// active-highlight) reuses the exact same tab machinery as a real note.
+function tabPath(id: string): string {
+  return id === HELP_TAB_ID ? '/help' : `/vault/note/${id}`
+}
 
 // Sits above ContentPane (not spanning the sidebar), same placement
 // convention as a browser or editor tab strip. Hidden entirely with no
@@ -18,10 +25,18 @@ export function TabBar() {
   const fileTree = useVaultStore((s) => s.fileTree)
   const navigate = useNavigate()
   const { fileId: activeFileId } = useParams<{ fileId?: string }>()
+  const { pathname } = useLocation()
   const [dragOverId, setDragOverId] = useState<string | null>(null)
   const [dropSide, setDropSide] = useState<'before' | 'after' | null>(null)
 
   if (openFileIds.length === 0) return null
+
+  // The Help tab has no :fileId param to match against (it lives at the
+  // fixed /help path, not /vault/note/:id) — pathname is what actually
+  // tells the two apart.
+  function isTabActive(id: string): boolean {
+    return id === HELP_TAB_ID ? pathname === '/help' : id === activeFileId
+  }
 
   function handleClose(e: MouseEvent, fileId: string) {
     e.stopPropagation()
@@ -29,8 +44,8 @@ export function TabBar() {
     // Only redirect if the tab being closed was the one actually open —
     // closing a background tab shouldn't move you away from what you're
     // currently reading.
-    if (fileId === activeFileId) {
-      navigate(nextId ? `/vault/note/${nextId}` : '/vault')
+    if (isTabActive(fileId)) {
+      navigate(nextId ? tabPath(nextId) : '/vault')
     }
   }
 
@@ -60,8 +75,9 @@ export function TabBar() {
       style={{ background: 'var(--bg-secondary)' }}
     >
       {openFileIds.map((id) => {
-        const isActive = id === activeFileId
-        const name = (findFileName(fileTree, id) ?? 'Untitled').replace(/\.md$/, '')
+        const isActive = isTabActive(id)
+        const isHelp = id === HELP_TAB_ID
+        const name = isHelp ? 'Syntax Guide' : (findFileName(fileTree, id) ?? 'Untitled').replace(/\.md$/, '')
         return (
           <div
             key={id}
@@ -69,9 +85,9 @@ export function TabBar() {
             tabIndex={0}
             draggable
             aria-current={isActive || undefined}
-            onClick={() => navigate(`/vault/note/${id}`)}
+            onClick={() => navigate(tabPath(id))}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') navigate(`/vault/note/${id}`)
+              if (e.key === 'Enter') navigate(tabPath(id))
             }}
             onDragStart={(e) => {
               e.dataTransfer.setData(DRAG_MIME, id)
@@ -92,6 +108,7 @@ export function TabBar() {
               borderRight: `2px solid ${dragOverId === id && dropSide === 'after' ? 'var(--accent-link)' : 'transparent'}`,
             }}
           >
+            {isHelp && <BookOpen size={13} className="shrink-0" />}
             <span className="max-w-40 truncate">{name}</span>
             <button
               type="button"

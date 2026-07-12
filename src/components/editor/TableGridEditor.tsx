@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
+import { useEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
-import { parseTable, serializeTable, type TableData, type ColumnAlign } from '../../lib/table-syntax'
+import { parseTable, parseClipboardTable, serializeTable, type TableData, type ColumnAlign } from '../../lib/table-syntax'
 import { useIsTouchDevice } from '../../hooks/useIsTouchDevice'
 import { useDragScrollTables } from '../../hooks/useDragScrollTables'
 
@@ -73,12 +73,19 @@ function TableCell({
   isEditing,
   onCommit,
   onCancel,
+  onPasteTable,
 }: {
   value: string
   align: ColumnAlign
   isEditing: boolean
   onCommit: (value: string) => void
   onCancel: () => void
+  // Fired instead of the normal paste-as-text behavior when the clipboard
+  // content parses as tabular data (see parseClipboardTable) — lets
+  // TableGridEditor fan a copied table out across multiple cells starting
+  // here, instead of flattening it into this one cell's text the way every
+  // paste used to be treated regardless of shape.
+  onPasteTable?: (data: string[][]) => void
 }) {
   const [draft, setDraft] = useState(value)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -116,6 +123,14 @@ function TableCell({
     }
   }
 
+  function handlePaste(e: ClipboardEvent<HTMLTextAreaElement>) {
+    if (!onPasteTable) return
+    const data = parseClipboardTable(e.clipboardData.getData('text/plain'))
+    if (!data) return // Not tabular — falls through to the normal single-cell paste-as-text handling.
+    e.preventDefault()
+    onPasteTable(data)
+  }
+
   if (isEditing) {
     return (
       // A wrapping <textarea>, not a single-line <input> — the table is
@@ -143,6 +158,7 @@ function TableCell({
         }}
         onBlur={commit}
         onKeyDown={handleKeyDown}
+        onPaste={handlePaste}
         className={`block w-full min-w-[3ch] resize-none overflow-hidden border-none bg-transparent outline-none ${CELL_TEXT_SIZE_CLASS}`}
         style={{ textAlign, color: 'var(--text-primary)' }}
       />
@@ -264,6 +280,47 @@ export function TableGridEditor({ id, value, onChange, onOverflowChange }: Table
     setEditingKey(null)
   }
 
+  // Fans a copied table (data) out across cells starting at (startRow,
+  // startCol) — startRow === -1 means "starting from a header cell," so
+  // data's first row fills the headers and the rest fills body rows from
+  // row 0. Expands columns/rows as needed to fit the pasted rectangle
+  // first, so pasting a 5-column table into a 2-column one just grows the
+  // table instead of silently truncating data. Only ever assigns a `null`
+  // (unaligned) alignment to newly-created columns — an existing column's
+  // own alignment is left untouched by a paste, the same "don't rewrite
+  // what wasn't touched" principle serializeTable's own idempotence
+  // already relies on elsewhere.
+  function pasteIntoGrid(startRow: number, startCol: number, data: string[][]) {
+    const maxDataCols = Math.max(...data.map((r) => r.length))
+    const neededCols = startCol + maxDataCols
+    const neededBodyRows = startRow === -1 ? data.length - 1 : startRow + data.length
+
+    let headers = [...table.headers]
+    let alignments = [...table.alignments]
+    let rows = table.rows.map((r) => [...r])
+
+    while (headers.length < neededCols) {
+      headers.push('Column')
+      alignments.push(null)
+      rows = rows.map((r) => [...r, ''])
+    }
+    while (rows.length < neededBodyRows) {
+      rows.push(headers.map(() => ''))
+    }
+
+    data.forEach((rowData, i) => {
+      const targetRow = startRow === -1 ? i - 1 : startRow + i
+      rowData.forEach((cellText, j) => {
+        const targetCol = startCol + j
+        if (targetRow === -1) headers[targetCol] = cellText
+        else rows[targetRow][targetCol] = cellText
+      })
+    })
+
+    commit({ headers, alignments, rows })
+    setEditingKey(null)
+  }
+
   function addRow() {
     commit({ ...table, rows: [...table.rows, table.headers.map(() => '')] })
   }
@@ -366,6 +423,7 @@ export function TableGridEditor({ id, value, onChange, onOverflowChange }: Table
                       isEditing={editingKey === `header-${col}`}
                       onCommit={(text) => commitHeader(col, text)}
                       onCancel={() => setEditingKey(null)}
+                      onPasteTable={(data) => pasteIntoGrid(-1, col, data)}
                     />
                   </div>
                   <button
@@ -422,6 +480,7 @@ export function TableGridEditor({ id, value, onChange, onOverflowChange }: Table
                     isEditing={editingKey === `cell-${ri}-${ci}`}
                     onCommit={(text) => commitCell(ri, ci, text)}
                     onCancel={() => setEditingKey(null)}
+                    onPasteTable={(data) => pasteIntoGrid(ri, ci, data)}
                   />
                 </td>
               ))}

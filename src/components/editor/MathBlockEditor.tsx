@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { parseMathBlock, serializeMathBlock } from '../../lib/math-syntax'
+import { parseMathBlock, serializeMathBlock, stripMathDelimiters } from '../../lib/math-syntax'
 import type { MathfieldElement } from 'mathlive'
 
 interface MathBlockEditorProps {
@@ -64,8 +64,37 @@ export function MathBlockEditor({ id, value, onChange, compact = true }: MathBlo
       if (compact) mathField.classList.add('math-field-compact')
       containerRef.current.appendChild(mathField)
       mathField.addEventListener('input', () => {
-        onChangeRef.current(id, serializeMathBlock(mathField!.value))
+        // 'latex-without-placeholders', not the plain `.value` getter —
+        // confirmed real bug from testing: an unfilled template slot (e.g.
+        // typing \frac and pressing Enter, then never typing into the
+        // numerator/denominator) serializes via plain .value as a literal
+        // \placeholder{} command, which is MathLive-internal — KaTeX (the
+        // separate renderer Read mode and every other block use) has never
+        // heard of it, and renders it as a bright red "unrecognized
+        // command" rather than an empty slot. This output format strips
+        // those markers instead of leaving them for a different renderer
+        // to choke on.
+        onChangeRef.current(id, serializeMathBlock(mathField!.getValue('latex-without-placeholders')))
       })
+      // Capture phase — 'paste' needs to be intercepted before MathLive's
+      // own internal handling (inside its shadow DOM) processes it, so
+      // stripMathDelimiters can run first. Only overrides the default
+      // behavior when a delimiter pair was actually found and removed —
+      // plain LaTeX (the common case) falls through to MathLive's own
+      // paste handling untouched.
+      mathField.addEventListener(
+        'paste',
+        (e: ClipboardEvent) => {
+          const text = e.clipboardData?.getData('text/plain')
+          if (!text) return
+          const stripped = stripMathDelimiters(text)
+          if (stripped === text) return
+          e.preventDefault()
+          e.stopPropagation()
+          mathField!.insert(stripped)
+        },
+        true,
+      )
       mathField.focus()
     })
 
