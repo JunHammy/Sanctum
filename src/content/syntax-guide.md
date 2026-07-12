@@ -118,6 +118,10 @@ function greet(name: string): string {
 
 ## Tables
 
+Type `/table` in Edit mode and Sanctum drops in a click-to-edit grid — no hand-aligning pipe characters. Click any cell to edit it, use the `+` buttons to add rows and columns, hover a row or column for its delete button. A table too wide for the page scrolls within itself instead of pushing the rest of the page sideways — drag anywhere in it to pan, or use the expand icon (appears once a table's actually wide enough to need it) for a fullscreen view.
+
+Prefer writing it by hand, or pasting a table copied from somewhere else? Standard GFM pipe syntax works too — Sanctum recognizes it on sight and swaps in the same visual grid automatically, in Edit mode. Read mode (like this page) always renders the plain HTML table underneath either way, hover the one below for its own expand icon:
+
 ```markdown
 | Feature | Works in Sanctum? |
 | --- | --- |
@@ -135,6 +139,12 @@ Rendered:
 | Graph view | No — not planned |
 
 ## Math
+
+Type `/math` in Edit mode for a visual equation editor — a proper math-aware input, not raw LaTeX typing. Type command names directly (`sqrt`, `frac`, `alpha`, `sum`, `int`...) and they build the real symbol as you go, the same way a graphing calculator's input works; or paste LaTeX copied from a paper, Wolfram Alpha, or anywhere else and it renders immediately. The expand icon opens a fullscreen view with an on-screen math keyboard, for browsing symbols without knowing their command names.
+
+Inline math works the same way mid-sentence — write `$...$` and it renders live the instant your cursor moves elsewhere, click back into it to edit the raw LaTeX directly.
+
+Both also still accept plain hand-written LaTeX, exactly as before — this page (Read mode) renders it identically either way:
 
 ```markdown
 Inline math like $E = mc^2$ works via a single `$...$`, and block math gets its own line:
