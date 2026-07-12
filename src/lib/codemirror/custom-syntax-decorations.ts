@@ -1,5 +1,6 @@
 import { EditorView, Decoration, ViewPlugin, WidgetType, type DecorationSet, type ViewUpdate } from '@codemirror/view'
 import { RangeSetBuilder } from '@codemirror/state'
+import katex from 'katex'
 
 // Live-preview decorations for Sanctum's custom syntax (wikilinks, callouts,
 // tags, ==highlight==) — none of this is part of the standard CommonMark/GFM
@@ -16,6 +17,15 @@ interface DecoSpec {
 const WIKILINK_PATTERN = /\[\[([^\]]+)\]\]/g
 const HIGHLIGHT_PATTERN = /==([^=\n]+)==/g
 const TAG_PATTERN = /(^|\s)#([a-zA-Z0-9_-]+)/g
+// Negative lookaround on both delimiters excludes $$...$$ (block math,
+// which Block.tsx swaps out for a whole MathBlockEditor instead — this
+// live-preview widget is for $...$ mid-sentence only). Without the
+// lookaround, a raw $$...$$ span visible in this same editor (e.g. via the
+// raw-text toggle) would get misread as two adjacent inline-math matches —
+// mirrors the same block-before-inline ordering katex-setup.ts's renderMath
+// already has to account for in Read mode, just enforced differently since
+// this scans raw text rather than post-render HTML.
+const INLINE_MATH_PATTERN = /(?<!\$)\$(?!\$)([^$\n]+?)(?<!\$)\$(?!\$)/g
 const CALLOUT_MARKER_PATTERN = /^\[!(\w+)\]/
 const BLOCKQUOTE_LINE_PATTERN = /^(\s*>\s?)(.*)$/
 
@@ -38,6 +48,36 @@ class WikilinkWidget extends WidgetType {
 
   eq(other: WikilinkWidget) {
     return other.display === this.display
+  }
+}
+
+// KaTeX (unlike MathLive) is a small, synchronous, already-eagerly-loaded
+// dependency — katex-setup.ts's own Read-mode rendering already relies on
+// it directly, and its CSS is already imported globally in main.tsx — so
+// this can render real math markup inline immediately, no dynamic import
+// or async loading state needed, unlike MathBlockEditor's MathLive field.
+class MathWidget extends WidgetType {
+  tex: string
+
+  constructor(tex: string) {
+    super()
+    this.tex = tex
+  }
+
+  toDOM() {
+    const span = document.createElement('span')
+    span.className = 'cm-live-math'
+    try {
+      span.innerHTML = katex.renderToString(this.tex.trim(), { throwOnError: false })
+    } catch {
+      span.textContent = this.tex
+      span.classList.add('cm-live-math-error')
+    }
+    return span
+  }
+
+  eq(other: MathWidget) {
+    return other.tex === this.tex
   }
 }
 
@@ -100,6 +140,14 @@ function addInlineDecorations(view: EditorView, from: number, to: number, specs:
     const tagStart = from + match.index + match[1].length
     const tagEnd = tagStart + 1 + match[2].length
     specs.push({ from: tagStart, to: tagEnd, deco: Decoration.mark({ class: 'cm-live-tag' }) })
+  }
+
+  INLINE_MATH_PATTERN.lastIndex = 0
+  while ((match = INLINE_MATH_PATTERN.exec(text))) {
+    const start = from + match.index
+    const end = start + match[0].length
+    if (overlapsSelection(view, start, end)) continue
+    specs.push({ from: start, to: end, deco: Decoration.replace({ widget: new MathWidget(match[1]) }) })
   }
 }
 

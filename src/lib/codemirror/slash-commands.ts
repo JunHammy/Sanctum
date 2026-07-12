@@ -10,6 +10,20 @@ interface Snippet {
 const SNIPPETS: Snippet[] = [
   { label: 'Callout', detail: '> [!NOTE]', snippet: '> [!NOTE] \n> ', cursorOffset: 13 },
   { label: 'Table', detail: 'pipe table', snippet: '| Column | Column |\n| --- | --- |\n| Cell | Cell |\n', cursorOffset: 2 },
+  // Empty $$...$$ — the moment this lands in an otherwise-empty block,
+  // Block.tsx's dynamic classification (parseMathBlock) picks it up and
+  // swaps in MathBlockEditor on the very next render, same as /table does
+  // for TableGridEditor. A single \n, not \n\n — confirmed real bug from
+  // testing: a *blank* line between the delimiters breaks CommonMark's
+  // paragraph parsing when this block's rawText is rendered in isolation
+  // for Read mode, splitting it into two <p> tags and corrupting the
+  // equation (see serializeMathBlock's matching fix in math-syntax.ts for
+  // the full explanation — this snippet needs the same fix at the source,
+  // since a block that's never been typed into never passes through that
+  // function at all). cursorOffset 2 just lands right after the opening
+  // $$; MathBlockEditor auto-focuses its own field immediately anyway, so
+  // the exact raw-text cursor position here is essentially cosmetic.
+  { label: 'Math', detail: 'equation ($$)', snippet: '$$\n$$', cursorOffset: 2 },
   { label: 'Code block', detail: 'fenced code', snippet: '```\n\n```', cursorOffset: 4 },
   { label: 'Heading', detail: '##', snippet: '## ', cursorOffset: 3 },
   { label: 'Bullet list', detail: '-', snippet: '- ', cursorOffset: 2 },

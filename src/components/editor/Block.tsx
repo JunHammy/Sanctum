@@ -1,5 +1,5 @@
 import { memo, useEffect, useRef, useState, type DragEvent } from 'react'
-import { ChevronUp, ChevronDown, GripVertical, Plus, Trash2, Table2, Code, Maximize2 } from 'lucide-react'
+import { ChevronUp, ChevronDown, GripVertical, Plus, Trash2, Table2, Code, Maximize2, Sigma } from 'lucide-react'
 import { useVaultStore } from '../../stores/vault.store'
 import { useImageResolution } from '../../hooks/useImageResolution'
 import { useTransclusion } from '../../hooks/useTransclusion'
@@ -10,8 +10,10 @@ import { useTableMinWidth } from '../../hooks/useTableMinWidth'
 import { useIsTouchDevice } from '../../hooks/useIsTouchDevice'
 import { renderBody } from '../../services/markdown.service'
 import { parseTable } from '../../lib/table-syntax'
+import { parseMathBlock } from '../../lib/math-syntax'
 import { MarkdownEditor } from './MarkdownEditor'
 import { TableGridEditor } from './TableGridEditor'
+import { MathBlockEditor } from './MathBlockEditor'
 import { Modal } from '../common/Modal'
 import type { Block as BlockType } from '../../lib/blocks/split-blocks'
 
@@ -118,12 +120,21 @@ export const Block = memo(function Block({
   // clicked into, so it can activate + expand in one step.
   const parsedTable = parseTable(block.rawText)
   const table = forceRawMode ? null : parsedTable
+  // Same dynamic, every-render classification as tables — a block can turn
+  // into (or out of) a $$...$$ span purely through in-place typing (e.g.
+  // the /math snippet landing in a previously-empty block). parsedMath
+  // holds the extracted LaTeX (possibly ''), not a boolean — null means
+  // "not a math block."
+  const parsedMath = parseMathBlock(block.rawText)
+  const isMath = !forceRawMode && parsedMath !== null
 
-  // Expanding always lands you in the editable grid, even from Read mode —
-  // activating first (if needed) and opening expanded are one motion, so
-  // there's no separate "read-only big view" to build and keep consistent
-  // with the real editing one.
-  function expandTable() {
+  // Expanding always lands you in the editable grid/equation, even from
+  // Read mode — activating first (if needed) and opening expanded are one
+  // motion, so there's no separate "read-only big view" to build and keep
+  // consistent with the real editing one. Shared between tables and math:
+  // both use the same isExpanded state and Modal, just with different
+  // content inside.
+  function handleExpand() {
     if (!isActive) onActivate(block.id)
     setIsExpanded(true)
   }
@@ -211,7 +222,7 @@ export const Block = memo(function Block({
           // page background). Already flowed up via onChange as-you-type,
           // so no separate "save this block" step is needed on deactivate.
           <>
-            {table && isExpanded ? (
+            {(table || isMath) && isExpanded ? (
               <div
                 className="rounded-md border p-3 pt-10 text-xs"
                 style={{ borderColor: 'var(--border)', color: 'var(--text-muted)', background: 'var(--bg-secondary)' }}
@@ -225,19 +236,21 @@ export const Block = memo(function Block({
                 onChange={onChange}
                 onOverflowChange={setIsOverflowing}
               />
+            ) : isMath ? (
+              <MathBlockEditor id={block.id} value={block.rawText} onChange={onChange} />
             ) : (
               <MarkdownEditor value={block.rawText} onChange={(text) => onChange(block.id, text)} />
             )}
-            {parsedTable && (
+            {(parsedTable || parsedMath !== null) && (
               <div className="absolute top-2 right-2 flex gap-1.5">
-                {table && isOverflowing && (
+                {((table && isOverflowing) || isMath) && (
                   <button
                     type="button"
-                    aria-label="Expand table"
-                    title="Expand table"
+                    aria-label={isMath ? 'Expand equation' : 'Expand table'}
+                    title={isMath ? 'Expand equation' : 'Expand table'}
                     className="rounded p-1 hover:bg-[var(--bg-tertiary)]"
                     style={{ color: 'var(--text-muted)' }}
-                    onClick={expandTable}
+                    onClick={handleExpand}
                   >
                     <Maximize2 size={14} />
                   </button>
@@ -245,13 +258,17 @@ export const Block = memo(function Block({
                 {!isExpanded && (
                   <button
                     type="button"
-                    aria-label={forceRawMode ? 'Edit as table' : 'Edit as text'}
-                    title={forceRawMode ? 'Edit as table' : 'Edit as text'}
+                    aria-label={forceRawMode ? 'Edit visually' : 'Edit as text'}
+                    title={forceRawMode ? 'Edit visually' : 'Edit as text'}
                     className="rounded p-1 hover:bg-[var(--bg-tertiary)]"
                     style={{ color: 'var(--text-muted)' }}
                     onClick={() => setForceRawMode((v) => !v)}
                   >
-                    {forceRawMode ? <Table2 size={14} /> : <Code size={14} />}
+                    {forceRawMode ? (
+                      parsedTable ? <Table2 size={14} /> : <Sigma size={14} />
+                    ) : (
+                      <Code size={14} />
+                    )}
                   </button>
                 )}
               </div>
@@ -267,6 +284,17 @@ export const Block = memo(function Block({
                 <TableGridEditor id={block.id} value={block.rawText} onChange={onChange} />
               </Modal>
             )}
+            {isMath && isExpanded && (
+              <Modal
+                isOpen
+                onClose={() => setIsExpanded(false)}
+                title="Equation (Esc or click outside to close)"
+                size="large"
+                dataBlockId={block.id}
+              >
+                <MathBlockEditor id={block.id} value={block.rawText} onChange={onChange} compact={false} />
+              </Modal>
+            )}
           </>
         ) : (
           <>
@@ -276,18 +304,18 @@ export const Block = memo(function Block({
               onClick={() => onActivate(block.id)}
               dangerouslySetInnerHTML={{ __html: html }}
             />
-            {parsedTable && (
+            {(parsedTable || parsedMath !== null) && (
               <button
                 type="button"
-                aria-label="Expand table"
-                title="Expand table"
+                aria-label={parsedMath !== null ? 'Expand equation' : 'Expand table'}
+                title={parsedMath !== null ? 'Expand equation' : 'Expand table'}
                 className={`absolute top-0 right-7 rounded p-1 transition-opacity hover:bg-[var(--bg-tertiary)] ${
                   isTouch ? 'opacity-70' : 'opacity-0 group-hover:opacity-100'
                 }`}
                 style={{ color: 'var(--text-muted)' }}
                 onClick={(e) => {
                   e.stopPropagation()
-                  expandTable()
+                  handleExpand()
                 }}
               >
                 <Maximize2 size={14} />

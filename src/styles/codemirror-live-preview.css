@@ -69,6 +69,15 @@
   padding: 0 0.05em;
 }
 
+.cm-live-math {
+  cursor: text;
+}
+
+.cm-live-math-error {
+  color: var(--error);
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+}
+
 .cm-live-callout {
   border-left: 3px solid var(--accent-link);
   background: var(--bg-tertiary);

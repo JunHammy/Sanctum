@@ -1,0 +1,18 @@
+/* Styling for MathLive's <math-field> web component — see
+   MathBlockEditor.tsx and its own comment on the `compact` prop for why
+   this exists: MathLive's built-in menu/keyboard-toggle icons float
+   directly over the typing area by default, which is fine when there's
+   real room (the fullscreen expand view) but actively in the way for the
+   small inline instance living in the note flow. */
+
+math-field {
+  display: block;
+  width: 100%;
+  border: none;
+  --primary: var(--accent-link);
+}
+
+.math-field-compact::part(menu-toggle),
+.math-field-compact::part(virtual-keyboard-toggle) {
+  display: none;
+}

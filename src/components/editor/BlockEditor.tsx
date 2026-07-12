@@ -341,7 +341,12 @@ export function BlockEditor({ value, onChange }: BlockEditorProps) {
       ))}
       <button
         type="button"
-        className="mt-2 flex items-center gap-1.5 self-start rounded-md border px-2.5 py-1.5 text-sm hover:opacity-80"
+        // mt-8, not mt-2 — confirmed real feedback from testing: editing
+        // the last row of a table (or the last line of any block) felt
+        // cramped with this button sitting right up against it, especially
+        // since a table's own "Add row" button already lives directly
+        // above this one with very little visual separation.
+        className="mt-8 flex items-center gap-1.5 self-start rounded-md border px-2.5 py-1.5 text-sm hover:opacity-80"
         style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }}
         onClick={() => commit([...blocks, createEmptyBlock()])}
       >
