@@ -37,12 +37,14 @@
     "mermaid": "^11.16.0",
     "minisearch": "^7.2.0",
     "motion": "^12.42.2",
+    "papaparse": "^5.5.4",
     "plotly.js-dist-min": "^3.7.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-router-dom": "^7.18.1",
     "turndown": "^7.2.4",
     "turndown-plugin-gfm": "^1.0.2",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
     "zustand": "^5.0.14"
   },
   "devDependencies": {
@@ -51,6 +53,7 @@
     "@types/markdown-it": "^14.1.2",
     "@types/markdown-it-footnote": "^3.0.4",
     "@types/node": "^24.13.2",
+    "@types/papaparse": "^5.5.2",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.3",

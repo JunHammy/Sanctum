@@ -17,6 +17,7 @@ import {
   UnfoldVertical,
   Archive,
   Upload,
+  FileSpreadsheet,
   MoreHorizontal,
   ChevronDown,
   Check,
@@ -32,6 +33,8 @@ import { collectFolderIds } from '../../lib/vault-tree'
 import { DRAG_MIME, type DragPayload } from '../../lib/file-tree-dnd'
 import { exportVaultZip } from '../../services/backup.service'
 import { importDocx } from '../../services/docx-import.service'
+import { importCsv } from '../../services/csv-import.service'
+import { importXlsx } from '../../services/xlsx-import.service'
 import { FileTree } from '../sidebar/FileTree'
 import { TagBrowser } from '../sidebar/TagBrowser'
 import { LoadingSpinner } from '../common/LoadingSpinner'
@@ -71,9 +74,16 @@ export function Sidebar({ nodes, isLoading, error, onRefresh }: SidebarProps) {
   const [vaultMenuOpen, setVaultMenuOpen] = useState(false)
   const [isBackingUp, setIsBackingUp] = useState(false)
   const [isImporting, setIsImporting] = useState(false)
+  // Separate from isImporting (docx) rather than shared — a shared flag
+  // would show "Importing…" on *both* menu buttons whenever either one is
+  // busy, which reads as if the wrong import is running.
+  const [isImportingCsv, setIsImportingCsv] = useState(false)
+  const [isImportingXlsx, setIsImportingXlsx] = useState(false)
   const [isRootDropTarget, setIsRootDropTarget] = useState(false)
   const [isResizing, setIsResizing] = useState(false)
   const importInputRef = useRef<HTMLInputElement>(null)
+  const csvImportInputRef = useRef<HTMLInputElement>(null)
+  const xlsxImportInputRef = useRef<HTMLInputElement>(null)
   const moreMenuRef = useRef<HTMLDivElement>(null)
   const vaultMenuRef = useRef<HTMLDivElement>(null)
   const resizeStartRef = useRef<{ startX: number; startWidth: number } | null>(null)
@@ -187,6 +197,16 @@ export function Sidebar({ nodes, isLoading, error, onRefresh }: SidebarProps) {
     importInputRef.current?.click()
   }
 
+  function handleImportCsvClick() {
+    setMoreMenuOpen(false)
+    csvImportInputRef.current?.click()
+  }
+
+  function handleImportXlsxClick() {
+    setMoreMenuOpen(false)
+    xlsxImportInputRef.current?.click()
+  }
+
   function handleRefreshClick() {
     setMoreMenuOpen(false)
     onRefresh()
@@ -274,6 +294,46 @@ export function Sidebar({ nodes, isLoading, error, onRefresh }: SidebarProps) {
       logError('sidebar.importDocx', err)
     } finally {
       setIsImporting(false)
+    }
+  }
+
+  async function handleImportCsvFile(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+
+    const title = file.name.replace(/\.csv$/i, '').trim() || 'Imported CSV'
+    setIsImportingCsv(true)
+    try {
+      await toastPromise(() => importCsv(file), {
+        loading: `Importing "${title}"…`,
+        success: `Imported "${title}"`,
+        error: (err) => toUserMessage(err, `Could not import "${title}".`),
+      })
+    } catch (err) {
+      logError('sidebar.importCsv', err)
+    } finally {
+      setIsImportingCsv(false)
+    }
+  }
+
+  async function handleImportXlsxFile(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+
+    const title = file.name.replace(/\.xlsx?$/i, '').trim() || 'Imported spreadsheet'
+    setIsImportingXlsx(true)
+    try {
+      await toastPromise(() => importXlsx(file), {
+        loading: `Importing "${title}"…`,
+        success: `Imported "${title}"`,
+        error: (err) => toUserMessage(err, `Could not import "${title}".`),
+      })
+    } catch (err) {
+      logError('sidebar.importXlsx', err)
+    } finally {
+      setIsImportingXlsx(false)
     }
   }
 
@@ -495,6 +555,36 @@ export function Sidebar({ nodes, isLoading, error, onRefresh }: SidebarProps) {
                           <button
                             type="button"
                             className="flex w-full items-center gap-2.5 rounded px-2.5 py-2 text-left text-sm hover:bg-[var(--bg-tertiary)] disabled:opacity-50"
+                            onClick={handleImportCsvClick}
+                            disabled={isImportingCsv || !isOnline}
+                          >
+                            <FileSpreadsheet
+                              size={16}
+                              style={{ color: 'var(--text-muted)' }}
+                              className={isImportingCsv ? 'animate-pulse' : undefined}
+                            />
+                            <span style={{ color: 'var(--text-primary)' }}>
+                              {isImportingCsv ? 'Importing…' : 'Import CSV (.csv)'}
+                            </span>
+                          </button>
+                          <button
+                            type="button"
+                            className="flex w-full items-center gap-2.5 rounded px-2.5 py-2 text-left text-sm hover:bg-[var(--bg-tertiary)] disabled:opacity-50"
+                            onClick={handleImportXlsxClick}
+                            disabled={isImportingXlsx || !isOnline}
+                          >
+                            <FileSpreadsheet
+                              size={16}
+                              style={{ color: 'var(--text-muted)' }}
+                              className={isImportingXlsx ? 'animate-pulse' : undefined}
+                            />
+                            <span style={{ color: 'var(--text-primary)' }}>
+                              {isImportingXlsx ? 'Importing…' : 'Import Excel (.xlsx)'}
+                            </span>
+                          </button>
+                          <button
+                            type="button"
+                            className="flex w-full items-center gap-2.5 rounded px-2.5 py-2 text-left text-sm hover:bg-[var(--bg-tertiary)] disabled:opacity-50"
                             onClick={() => {
                               setMoreMenuOpen(false)
                               setWebClipOpen(true)
@@ -514,6 +604,20 @@ export function Sidebar({ nodes, isLoading, error, onRefresh }: SidebarProps) {
                     accept=".docx"
                     className="hidden"
                     onChange={handleImportFile}
+                  />
+                  <input
+                    ref={csvImportInputRef}
+                    type="file"
+                    accept=".csv"
+                    className="hidden"
+                    onChange={handleImportCsvFile}
+                  />
+                  <input
+                    ref={xlsxImportInputRef}
+                    type="file"
+                    accept=".xlsx,.xls"
+                    className="hidden"
+                    onChange={handleImportXlsxFile}
                   />
                 </div>
               </div>

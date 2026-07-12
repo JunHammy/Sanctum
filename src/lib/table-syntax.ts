@@ -71,7 +71,10 @@ function parseSeparatorRow(line: string, expectedCount: number): ColumnAlign[] |
   return alignments
 }
 
-function padRow(cells: string[], length: number): string[] {
+// Exported for csv-import.service.ts — a parsed CSV file is exactly the
+// same "ragged rows against a fixed header count" shape a hand-written
+// markdown table can be, so the same padding/truncation rule applies.
+export function padRow(cells: string[], length: number): string[] {
   // Ragged rows get padded with empty cells (or truncated if too long) —
   // inherited GFM behavior, not a choice to "fix": this is exactly what
   // markdown-it's own renderer already does for the same source today.
