@@ -88,6 +88,27 @@ interface NoteState {
   setPendingScrollAnchor: (line: number | null) => void
 }
 
+// Raw content for every note opened this session, keyed by fileId — checked
+// synchronously by openNote before it ever touches the network, so
+// switching back to a note you (or an open tab) already visited displays
+// instantly instead of showing a loading spinner for a fresh Drive fetch
+// every single time. Confirmed as a real, repeatedly-felt gap from testing:
+// there was no reason switching between two already-open tabs should ever
+// re-fetch from scratch. Deliberately separate from cache.service.ts's
+// IndexedDB cache (which exists for cross-session/offline persistence and
+// costs an async DB read either way) — this is plain in-memory, alive only
+// for the current page session, cleared on reload. Not tied to tab open/
+// close lifecycle; a closed tab's entry just sits here harmlessly in case
+// the same note gets reopened later this session.
+//
+// Stale-while-revalidate, not "trust the cache forever": openNote still
+// kicks off a real Drive fetch every time (unless offline), it just no
+// longer *blocks* the switch on it — the cached version shows immediately,
+// and the fresh read silently replaces it a moment later only if the
+// content actually changed (e.g. edited from another device) since it was
+// last cached.
+const sessionContentCache = new Map<string, string>()
+
 let autoSaveTimer: ReturnType<typeof setTimeout> | null = null
 
 // Captures the state *before* the current burst of edits the first time
@@ -174,10 +195,16 @@ export const useNoteStore = create<NoteState>()((set, get) => ({
     // undoable back into whatever the previously open note looked like.
     pendingUndoSnapshot = null
 
+    // Already visited this session — render it immediately (isLoading stays
+    // false, no spinner) instead of waiting on the network read below,
+    // which still runs regardless to silently pick up any real change.
+    const cachedRaw = sessionContentCache.get(fileId)
+    const cachedRendered = cachedRaw !== undefined ? renderNote(cachedRaw) : null
+
     // Set activeNoteId immediately so useNote's effect doesn't re-fire on
     // every re-render while this is in flight (or after it fails).
     set({
-      isLoading: true,
+      isLoading: cachedRendered === null,
       error: null,
       activeNoteId: fileId,
       isDirty: false,
@@ -189,16 +216,38 @@ export const useNoteStore = create<NoteState>()((set, get) => ({
       // away before BlockEditor's Suspense resolved) shouldn't leak into
       // whatever note opens next and scroll it to an unrelated line.
       pendingScrollAnchor: null,
+      ...(cachedRendered
+        ? {
+            html: cachedRendered.html,
+            frontmatter: cachedRendered.frontmatter,
+            frontmatterBlock: cachedRendered.frontmatterBlock,
+            rawBody: cachedRendered.rawBody,
+            isOfflineContent: false,
+          }
+        : {}),
     })
     if (!useNetworkStore.getState().isOnline) {
-      await loadNoteFromCache(get, set, fileId)
+      if (!cachedRendered) await loadNoteFromCache(get, set, fileId)
       return
     }
 
     try {
       const raw = await driveService.readFile(fileId)
-      const { html, frontmatter, frontmatterBlock, rawBody } = renderNote(raw)
-      set({ html, frontmatter, frontmatterBlock, rawBody, isLoading: false, isOfflineContent: false })
+      sessionContentCache.set(fileId, raw)
+      // A rapid second openNote call for a different note could land here
+      // late, after the user's already moved on — same staleness guard
+      // convention as loadNoteFromCache/vault.store's loadActiveVaultTree.
+      if (get().activeNoteId !== fileId) return
+      // Skip the redundant re-render when the fresh read confirms the
+      // cached version already showing was correct — a same-value string
+      // wouldn't visibly change anything, but frontmatter is a freshly
+      // built object either way and would otherwise still trigger every
+      // subscribed component to re-render for nothing.
+      if (raw !== cachedRaw) {
+        const { html, frontmatter, frontmatterBlock, rawBody } = renderNote(raw)
+        set({ html, frontmatter, frontmatterBlock, rawBody, isOfflineContent: false })
+      }
+      set({ isLoading: false })
       // Fire-and-forget write-through — closes the gap where this store's
       // own read path never touched cache.service.ts at all, while
       // search/tags/backlinks silently did as a side effect of indexing.
@@ -207,13 +256,17 @@ export const useNoteStore = create<NoteState>()((set, get) => ({
       if (modifiedTime) cacheService.setCachedContent(fileId, { raw, modifiedTime })
     } catch (err) {
       if (isOfflineError(err)) {
-        await loadNoteFromCache(get, set, fileId)
+        if (!cachedRendered) await loadNoteFromCache(get, set, fileId)
+        else set({ isLoading: false })
         return
       }
       const message = toUserMessage(err, 'Could not load this note from Google Drive.')
       logError('note.openNote', err)
       useToastStore.getState().show(message, 'error')
-      set({ isLoading: false, error: message })
+      // Don't paper over content that's already showing fine from cache
+      // with an error banner — only surface the error when there was
+      // nothing to fall back to.
+      set({ isLoading: false, error: cachedRendered ? null : message })
     }
   },
 
@@ -297,6 +350,14 @@ export const useNoteStore = create<NoteState>()((set, get) => ({
     set({ isSaving: true, error: null })
     try {
       await driveService.updateFile(activeNoteId, frontmatterBlock + rawBody)
+      // Keeps openNote's session cache in sync with what was just saved —
+      // without this, navigating away and back to this note would briefly
+      // show the stale pre-edit version from cache before the network
+      // revalidation caught up and silently replaced it, which for the
+      // user's own just-made edit reads as "did my change not save?"
+      // rather than the harmless flash it's meant to be for unrelated
+      // remote changes.
+      sessionContentCache.set(activeNoteId, frontmatterBlock + rawBody)
       set({ isSaving: false, isDirty: false })
       // Single-entry reindex, not a full rebuild — keeps search results
       // current with the just-saved content without waiting for the next
