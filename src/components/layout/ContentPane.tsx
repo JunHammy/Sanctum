@@ -14,7 +14,13 @@ export function ContentPane({ children }: { children: ReactNode }) {
     // scroll — confirmed via testing, this is what actually caused a
     // wide table to overflow the whole app rather than scrolling within
     // its own bounds like it was supposed to.
-    <main className="min-w-0 flex-1 overflow-y-auto px-5 py-6 sm:px-8">
+    // pb-[50vh], not a fixed/small bottom padding — confirmed real feedback
+    // from testing: a small pad only cleared the "Add block" button itself,
+    // but the *page* still ran out of scroll room right at the last block,
+    // leaving no way to scroll it up out of the cramped bottom edge while
+    // editing it. Half the viewport gives every block, including the very
+    // last one, room to scroll up into comfortable (roughly centered) view.
+    <main className="min-w-0 flex-1 overflow-y-auto px-5 pt-6 pb-[50vh] sm:px-8">
       <div className="mx-auto w-full max-w-4xl">{children}</div>
     </main>
   )

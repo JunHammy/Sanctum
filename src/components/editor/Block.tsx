@@ -8,12 +8,15 @@ import { useMediaEmbeds } from '../../hooks/useMediaEmbeds'
 import { useDragScrollTables } from '../../hooks/useDragScrollTables'
 import { useTableMinWidth } from '../../hooks/useTableMinWidth'
 import { useIsTouchDevice } from '../../hooks/useIsTouchDevice'
+import { useNoteStore } from '../../stores/note.store'
 import { renderBody } from '../../services/markdown.service'
 import { parseTable } from '../../lib/table-syntax'
 import { parseMathBlock } from '../../lib/math-syntax'
+import { parsePythonBlock, parsePersistedOutput, serializePythonBlock, type PersistedPythonOutput } from '../../lib/python/python-syntax'
 import { MarkdownEditor } from './MarkdownEditor'
 import { TableGridEditor } from './TableGridEditor'
 import { MathBlockEditor } from './MathBlockEditor'
+import { PythonCodeBlock } from './PythonCodeBlock'
 import { Modal } from '../common/Modal'
 import type { Block as BlockType } from '../../lib/blocks/split-blocks'
 
@@ -85,6 +88,11 @@ export const Block = memo(function Block({
   useMediaEmbeds(containerRef, fileTree)
   useDragScrollTables(containerRef)
   useTableMinWidth(containerRef)
+  // activeNoteId, not a fileId prop threaded down from BlockEditor — Block
+  // doesn't otherwise know which note it belongs to, and there's only ever
+  // one active note today (no split-pane view yet). Revisit this if that
+  // changes.
+  const activeNoteId = useNoteStore((s) => s.activeNoteId)
 
   // Escape hatch for pasting a table copied from elsewhere (the grid can't
   // sanely accept a multi-line paste) and any hand-edit the grid's toolbar
@@ -127,6 +135,40 @@ export const Block = memo(function Block({
   // "not a math block."
   const parsedMath = parseMathBlock(block.rawText)
   const isMath = !forceRawMode && parsedMath !== null
+  // Unlike table/math, python never swaps out the text editor — the code
+  // itself is still genuinely worth hand-editing as raw text. This just
+  // decides whether to *also* show a live Run button + output panel
+  // alongside it, in both active and inactive rendering (below), so running
+  // code doesn't require deactivating the block first (confirmed via
+  // testing: requiring that extra step read as "there's no Run button"
+  // since nothing indicated one existed until you clicked away). Rendered
+  // as a direct sibling here rather than via a portal into the raw HTML's
+  // own `.python-run-controls` placeholder (which plugin-python.ts still
+  // emits, unused here) — confirmed via testing that portaling a live React
+  // component into a node living inside this same element's
+  // dangerouslySetInnerHTML subtree caused the whole subtree to get
+  // silently torn down and rebuilt on every render once that portal's own
+  // state started changing (new marker element each pass, byte-identical
+  // html content each time — ruled out via direct comparison) — an
+  // infinite loop reproduced here specifically after an activate/deactivate
+  // cycle. MarkdownReader hit the same wall for its own whole-document
+  // rendering and fixed it the same way — see split-python-segments.ts.
+  const parsedPython = parsePythonBlock(block.rawText)
+  // The block's last-saved run result, if any — parsed straight from its
+  // own rawText (the ```python-output fence split-blocks.ts merges onto
+  // the same Block as its code fence). Handed to PythonCodeBlock as its
+  // starting point so a note doesn't come up blank before anything's been
+  // (re-)run this session.
+  const parsedOutput = parsePersistedOutput(block.rawText)
+
+  // Writes a completed run's result back into this block's own rawText —
+  // rides the same onChange → BlockEditor.handleBlockChange → note.store
+  // pipeline any other edit to this block already goes through, so
+  // persisted output picks up autosave/undo for free.
+  function handlePersistOutput(output: PersistedPythonOutput) {
+    if (parsedPython === null) return
+    onChange(block.id, serializePythonBlock(parsedPython, output))
+  }
 
   // Expanding always lands you in the editable grid/equation, even from
   // Read mode — activating first (if needed) and opening expanded are one
@@ -238,6 +280,42 @@ export const Block = memo(function Block({
               />
             ) : isMath ? (
               <MathBlockEditor id={block.id} value={block.rawText} onChange={onChange} />
+            ) : parsedPython !== null ? (
+              // One shared bordered box for the whole "cell" (code + Run/
+              // output), not two stacked boxes — see PythonCodeBlock's own
+              // comment for why it has no border of its own. `bare` on
+              // MarkdownEditor for the same reason. Fed just the code, not
+              // the block's full rawText — CodeMirror is uncontrolled (see
+              // MarkdownEditor's own comment) and reports its *entire*
+              // buffer back on every keystroke, so if it were ever handed
+              // the block's persisted output fence too, its stale copy of
+              // that fence would silently overwrite a real run's result the
+              // next time the user typed anything at all (confirmed as a
+              // real bug from testing — the raw output JSON was visibly
+              // editable right inside the code editor, and re-running while
+              // still active could revert to a stale prior result).
+              // onChange reconstructs the full block text by re-attaching
+              // whatever the *current* persisted output is — always fresh,
+              // even though CodeMirror itself doesn't remount on every
+              // render, because MarkdownEditor re-reads this closure via a
+              // ref on every render (see its own onChangeRef).
+              <div className="overflow-hidden rounded-md border" style={{ borderColor: 'var(--border)' }}>
+                <MarkdownEditor
+                  bare
+                  language="python"
+                  value={parsedPython}
+                  onChange={(text) => onChange(block.id, serializePythonBlock(text, parsedOutput))}
+                />
+                {activeNoteId && (
+                  <PythonCodeBlock
+                    noteId={activeNoteId}
+                    blockKey={block.id}
+                    code={parsedPython}
+                    initialOutput={parsedOutput}
+                    onPersist={handlePersistOutput}
+                  />
+                )}
+              </div>
             ) : (
               <MarkdownEditor value={block.rawText} onChange={(text) => onChange(block.id, text)} />
             )}
@@ -298,12 +376,39 @@ export const Block = memo(function Block({
           </>
         ) : (
           <>
-            <div
-              ref={containerRef}
-              className="markdown-body cursor-text rounded px-1 py-0.5 hover:bg-[var(--bg-tertiary)]"
-              onClick={() => onActivate(block.id)}
-              dangerouslySetInnerHTML={{ __html: html }}
-            />
+            {parsedPython !== null ? (
+              // One shared bordered box, same reasoning as the active
+              // branch above — `.python-cell-wrapper` (markdown.css)
+              // suppresses `.python-block`'s own standalone border/rounding
+              // specifically in this context (it keeps its full one when
+              // MarkdownReader is the only container around it, via a
+              // portal instead of this sibling arrangement) so the two
+              // pieces read as one cell instead of two.
+              <div className="python-cell-wrapper overflow-hidden rounded-md border" style={{ borderColor: 'var(--border)' }}>
+                <div
+                  ref={containerRef}
+                  className="markdown-body cursor-text px-1 py-0.5 hover:bg-[var(--bg-tertiary)]"
+                  onClick={() => onActivate(block.id)}
+                  dangerouslySetInnerHTML={{ __html: html }}
+                />
+                {activeNoteId && (
+                  <PythonCodeBlock
+                    noteId={activeNoteId}
+                    blockKey={block.id}
+                    code={parsedPython}
+                    initialOutput={parsedOutput}
+                    onPersist={handlePersistOutput}
+                  />
+                )}
+              </div>
+            ) : (
+              <div
+                ref={containerRef}
+                className="markdown-body cursor-text rounded px-1 py-0.5 hover:bg-[var(--bg-tertiary)]"
+                onClick={() => onActivate(block.id)}
+                dangerouslySetInnerHTML={{ __html: html }}
+              />
+            )}
             {(parsedTable || parsedMath !== null) && (
               <button
                 type="button"

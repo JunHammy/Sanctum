@@ -47,6 +47,36 @@ export function BlockEditor({ value, onChange }: BlockEditorProps) {
   // every block, not just the one being dragged over.
   const dropPositionRef = useRef<'above' | 'below' | null>(null)
 
+  // Every mutation handler below used to call `onChange(joinBlocks(next))`
+  // directly inside its own `setBlocks(prev => ...)` updater. That's a real
+  // bug, not just style — React runs an updater function during its render
+  // phase (and can replay it more than once), so calling another
+  // component's setState from inside one (onChange here ultimately reaches
+  // note.store's setState) is exactly the "Cannot update a component while
+  // rendering a different component" violation React warns about.
+  // Confirmed as the actual cause of a real bug from testing: it surfaced
+  // as a python block's editor becoming unresponsive to further typing/
+  // Run clicks after the first activate/deactivate cycle, though the same
+  // hazard applied to every block type, not just python — any edit could
+  // have hit this. Centralizing the notify-parent step into one effect that
+  // reacts to `blocks` itself, instead of each handler doing it inline,
+  // fixes every call site at once and is what let all five handlers below
+  // drop `onChange` from their dependency arrays entirely.
+  const onChangeRef = useRef(onChange)
+  onChangeRef.current = onChange
+  const isFirstBlocksEffect = useRef(true)
+  useEffect(() => {
+    // Skips the mount: `blocks` is freshly derived from `value` via
+    // splitIntoBlocks, so firing onChange here would just round-trip it
+    // straight back to the parent unasked — marking a just-opened,
+    // untouched note dirty for no reason.
+    if (isFirstBlocksEffect.current) {
+      isFirstBlocksEffect.current = false
+      return
+    }
+    onChangeRef.current(joinBlocks(blocks))
+  }, [blocks])
+
   // Restores scroll position after switching *into* Edit mode from Read
   // (toggleReadModePreservingScroll in scroll-to-line.ts) — a no-op if
   // there's nothing pending (a plain toggle-into-Edit that isn't the first
@@ -123,24 +153,11 @@ export function BlockEditor({ value, onChange }: BlockEditorProps) {
   // re-ran a full markdown parse plus image resolution — on every single
   // keystroke typed into any one of them, which is what was showing up as
   // flicker while editing.
-  const commit = useCallback(
-    (next: BlockType[]) => {
-      setBlocks(next)
-      onChange(joinBlocks(next))
-    },
-    [onChange],
-  )
+  const commit = useCallback((next: BlockType[]) => setBlocks(next), [])
 
-  const handleBlockChange = useCallback(
-    (id: string, rawText: string) => {
-      setBlocks((prev) => {
-        const next = prev.map((b) => (b.id === id ? { ...b, rawText } : b))
-        onChange(joinBlocks(next))
-        return next
-      })
-    },
-    [onChange],
-  )
+  const handleBlockChange = useCallback((id: string, rawText: string) => {
+    setBlocks((prev) => prev.map((b) => (b.id === id ? { ...b, rawText } : b)))
+  }, [])
 
   const handleAddBlock = useCallback(
     (afterId?: string) => {
@@ -162,13 +179,11 @@ export function BlockEditor({ value, onChange }: BlockEditorProps) {
         // all a scroll anchor needs.
         const anchorLine = prev[index]?.startLine ?? 0
         const positioned: BlockType = { ...newBlock, startLine: anchorLine + 0.5 }
-        const next = [...prev.slice(0, index + 1), positioned, ...prev.slice(index + 1)]
-        onChange(joinBlocks(next))
-        return next
+        return [...prev.slice(0, index + 1), positioned, ...prev.slice(index + 1)]
       })
       setActiveId(newBlock.id)
     },
-    [onChange],
+    [],
   )
 
   // Touch-only fallback for reordering — native HTML5 drag (the desktop
@@ -183,11 +198,10 @@ export function BlockEditor({ value, onChange }: BlockEditorProps) {
         if (index === -1 || targetIndex < 0 || targetIndex >= prev.length) return prev
         const next = [...prev]
         ;[next[index], next[targetIndex]] = [next[targetIndex], next[index]]
-        onChange(joinBlocks(next))
         return next
       })
     },
-    [onChange],
+    [],
   )
   // Distinct stable references (not the same function passed to both) so
   // Block.tsx can tell them apart as separate props, each closed over a
@@ -201,13 +215,11 @@ export function BlockEditor({ value, onChange }: BlockEditorProps) {
         const next = prev.filter((b) => b.id !== id)
         // Always keep at least one block — an empty document is still a
         // clickable-to-type block, not a blank void.
-        const final = next.length > 0 ? next : [createEmptyBlock()]
-        onChange(joinBlocks(final))
-        return final
+        return next.length > 0 ? next : [createEmptyBlock()]
       })
       setActiveId((current) => (current === id ? null : current))
     },
-    [onChange],
+    [],
   )
 
   const clearDragState = useCallback(() => {
@@ -307,12 +319,10 @@ export function BlockEditor({ value, onChange }: BlockEditorProps) {
         const targetIndex = withoutDragged.findIndex((b) => b.id === targetId)
         if (targetIndex === -1) return prev
         const insertAt = position === 'above' ? targetIndex : targetIndex + 1
-        const next = [...withoutDragged.slice(0, insertAt), draggedBlock, ...withoutDragged.slice(insertAt)]
-        onChange(joinBlocks(next))
-        return next
+        return [...withoutDragged.slice(0, insertAt), draggedBlock, ...withoutDragged.slice(insertAt)]
       })
     },
-    [clearDragState, onChange],
+    [clearDragState],
   )
 
   return (

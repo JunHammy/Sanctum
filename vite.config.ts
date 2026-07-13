@@ -2,6 +2,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
+import { viteStaticCopy } from 'vite-plugin-static-copy'
 
 // Shared with the manifest's icon paths below — confirmed real, pre-existing
 // bug via DevTools' Application > Manifest panel: every icon entry
@@ -34,6 +35,23 @@ export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
+    // Pyodide's WASM runtime + stdlib are static assets, not JS modules Vite
+    // can bundle — self-hosted (copied into the build output) rather than
+    // pointed at Pyodide's own CDN at runtime, same "everything the app
+    // needs comes from us, not a third party we don't control" reasoning
+    // every other heavy library here already follows. The glob picks up
+    // pyodide.mjs/pyodide.asm.mjs (the ESM loader + core runtime),
+    // pyodide.asm.wasm (~9.6MB, the actual interpreter), python_stdlib.zip,
+    // and pyodide-lock.json (the package index loadPackage() reads) —
+    // deliberately excludes the README/console.html/.d.ts/.map files,
+    // which are dev-time-only and would just bloat the deployed output.
+    viteStaticCopy({
+      // stripBase: true — without it, the plugin preserves the glob's
+      // source directory structure (dist/pyodide/node_modules/pyodide/...)
+      // instead of flattening to dist/pyodide/pyodide.asm.wasm, which is
+      // what loadPyodide's indexURL actually expects to find.
+      targets: [{ src: 'node_modules/pyodide/*.{mjs,wasm,zip,json}', dest: 'pyodide', rename: { stripBase: true } }],
+    }),
     VitePWA({
       registerType: 'autoUpdate',
       workbox: {
@@ -63,7 +81,12 @@ export default defineConfig({
         // download 4.6MB on first install for a chart type most notes will
         // never use. A runtime fetch (only when an actual ```plotly block
         // is rendered) goes through the normal browser HTTP cache instead.
-        globIgnores: ['**/plotly.min-*.js'],
+        // pyodide.asm.wasm alone is ~9.6MB, same problem as Plotly below —
+        // past Workbox's 2MB per-file precache limit, and lazy-loaded
+        // already (only fetched once a ```python block's Run button is
+        // actually clicked), so forcing every install to precache the
+        // whole Python runtime upfront would be exactly backwards.
+        globIgnores: ['**/plotly.min-*.js', 'pyodide/**'],
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/,

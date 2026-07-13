@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useVaultStore } from '../../stores/vault.store'
 import { useNoteStore } from '../../stores/note.store'
@@ -13,6 +13,9 @@ import { useMediaEmbeds } from '../../hooks/useMediaEmbeds'
 import { useDragScrollTables } from '../../hooks/useDragScrollTables'
 import { useTableExpand } from '../../hooks/useTableExpand'
 import { useTableMinWidth } from '../../hooks/useTableMinWidth'
+import { splitAroundPythonBlocks } from '../../lib/python/split-python-segments'
+import { serializePythonBlock, type PersistedPythonOutput } from '../../lib/python/python-syntax'
+import { PythonCodeBlock } from './PythonCodeBlock'
 import { Modal } from '../common/Modal'
 import { scrollToLineWithFlash, consumePendingScrollAnchor } from '../../lib/scroll-to-line'
 
@@ -65,6 +68,28 @@ export function MarkdownReader({ html, currentFileId }: MarkdownReaderProps) {
   useTableExpand(containerRef, setExpandedTableHtml)
   useDragScrollTables(expandedRef)
   useTableMinWidth(expandedRef)
+
+  // Recomputed only when the rendered HTML actually changes, not on every
+  // render (this parses the whole string into a detached DOM tree — see
+  // split-python-segments.ts for why this exists instead of the portal this
+  // app used before).
+  const segments = useMemo(() => splitAroundPythonBlocks(html), [html])
+
+  // Splices a completed run's result directly into the note's own rawBody
+  // at a block's line range, then saves through the normal updateContent
+  // pipeline (undo snapshot, isDirty, autosave scheduling — all already
+  // handled there). rawBody is always frontmatter-stripped by the time it
+  // reaches this store (renderNote/renderBody both operate on already-
+  // extracted content), the same content markdown-it tokenized to produce
+  // data-src-line/data-src-line-end in the first place — so these line
+  // numbers index directly into it with no offset adjustment.
+  function persistOutput(code: string, startLine: number | null, endLine: number | null, output: PersistedPythonOutput) {
+    if (startLine === null || endLine === null || Number.isNaN(startLine) || Number.isNaN(endLine)) return
+    const { rawBody, updateContent } = useNoteStore.getState()
+    const lines = rawBody.split('\n')
+    const nextLines = [...lines.slice(0, startLine), serializePythonBlock(code, output), ...lines.slice(endLine)]
+    updateContent(nextLines.join('\n'))
+  }
 
   // Restores scroll position after switching *into* Read mode from Edit
   // (toggleReadModePreservingScroll in scroll-to-line.ts) — a no-op on a
@@ -158,8 +183,26 @@ export function MarkdownReader({ html, currentFileId }: MarkdownReaderProps) {
         // margin now that this no longer relies on the removed gutter spacer.
         className="markdown-body px-2"
         onClick={handleClick}
-        dangerouslySetInnerHTML={{ __html: html }}
-      />
+      >
+        {segments.map((segment, i) =>
+          segment.type === 'html' ? (
+            <div key={i} dangerouslySetInnerHTML={{ __html: segment.html }} />
+          ) : (
+            <div key={i} className="python-cell-wrapper overflow-hidden rounded-md border" style={{ borderColor: 'var(--border)' }}>
+              <div dangerouslySetInnerHTML={{ __html: segment.codeHtml }} />
+              {activeNoteId && (
+                <PythonCodeBlock
+                  noteId={activeNoteId}
+                  blockKey={segment.key}
+                  code={segment.code}
+                  initialOutput={segment.initialOutput}
+                  onPersist={(output) => persistOutput(segment.code, segment.startLine, segment.endLine, output)}
+                />
+              )}
+            </div>
+          ),
+        )}
+      </div>
       <Modal
         isOpen={expandedTableHtml !== null}
         onClose={() => setExpandedTableHtml(null)}

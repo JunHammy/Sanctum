@@ -135,6 +135,41 @@
   padding: 0;
 }
 
+/* A python block's Run/output panel (PythonCodeBlock) is meant to read as
+   the bottom half of one cell, not a second box glued below this one — see
+   PythonCodeBlock's own comment. This is the standalone shape for a
+   `.python-block` shown with no Run panel at all — currently only the
+   syntax guide (HelpRoute.tsx), a plain reference example with no live
+   interactivity. Every *interactive* rendering (Block.tsx, MarkdownReader)
+   pairs this with a real PythonCodeBlock inside a `.python-cell-wrapper`
+   instead (see the override below) — neither portals into this element the
+   way an earlier version of this app did (see PythonCodeBlock's own
+   comment for why that broke). .python-block's own <pre> loses its
+   independent rounding/margin so it sits flush against whichever container
+   ends up wrapping it. */
+.python-block {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.python-block pre {
+  border-radius: 0;
+  margin: 0;
+}
+
+/* Both Block.tsx's inactive rendering and MarkdownReader wrap this raw HTML
+   together with a sibling <PythonCodeBlock> in their own
+   `.python-cell-wrapper` container instead of relying on `.python-block`
+   itself for the outer shape. `.python-block`'s own border/rounding would
+   double up with that wrapper's in this context, so it's suppressed here —
+   the standalone rule above still applies everywhere
+   .python-block appears outside a `.python-cell-wrapper` (i.e. Read mode). */
+.python-cell-wrapper .python-block {
+  border: none;
+  border-radius: 0;
+}
+
 .markdown-body ul,
 .markdown-body ol {
   padding-left: 1.5em;

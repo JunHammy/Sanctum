@@ -6,6 +6,8 @@ import { extractFrontmatter, renderBody } from '../services/markdown.service'
 import { resolveImagesIn } from './useImageResolution'
 import { useVaultStore } from '../stores/vault.store'
 import type { FileTreeNode } from '../types/vault.types'
+import { renderStaticPythonOutput } from '../lib/python/render-static-output'
+import type { PersistedPythonOutput } from '../lib/python/python-syntax'
 
 function escapeHtml(text: string): string {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
@@ -19,6 +21,32 @@ function escapeHtml(text: string): string {
 // export.service.ts can call resolveTransclusionsIn independently of, and
 // potentially overlapping with, the hook's own runs.
 const inFlight = new WeakSet<HTMLElement>()
+
+// Caches a fully-resolved embed's rendered HTML by (target, heading,
+// blockId) so a *remount* of the same placeholder — which happens far more
+// often than it looks, since every Block.tsx active/inactive swap, Read/
+// Edit toggle, and (since python output started persisting into the note's
+// own rawBody) every single Run click all regenerate this content from
+// scratch — can redisplay instantly instead of re-fetching from Drive.
+// Confirmed as a real, increasingly visible glitch from testing: running a
+// python block elsewhere in a note momentarily reset every already-loaded
+// transclusion back to "Loading…" on the same page. Trades some freshness
+// for that stability — if the *source* note being embedded changes, an
+// already-cached embed won't pick that up until a full page reload clears
+// this (module-level, not persisted). Same staleness trade-off this app
+// already makes elsewhere (e.g. the IndexedDB content cache only refreshes
+// on the next vault reindex, not on every save).
+const resolvedCache = new Map<string, string>()
+
+// A dot-joined key, not a plain-space join — a target/heading could
+// plausibly contain a space itself, which would risk two genuinely
+// different embeds colliding onto the same cache key. Dot is already
+// disallowed in note titles/headings in practice (path-like characters
+// aren't valid there), so this is a safe-enough separator without reaching
+// for an escape-prone control character.
+function cacheKey(target: string, heading: string | null, blockId: string | null): string {
+  return [target, heading ?? '', blockId ?? ''].join('.')
+}
 
 async function resolveOnePlaceholder(el: HTMLElement, fileTree: FileTreeNode[]): Promise<void> {
   if (inFlight.has(el)) return
@@ -34,6 +62,15 @@ async function resolveOnePlaceholder(el: HTMLElement, fileTree: FileTreeNode[]):
     const heading = el.getAttribute('data-heading')
     const headingEnd = el.getAttribute('data-heading-end')
     const blockId = el.getAttribute('data-block')
+
+    const key = cacheKey(target, heading, blockId)
+    const cached = resolvedCache.get(key)
+    if (cached !== undefined) {
+      body.innerHTML = cached
+      el.classList.add('transclusion-loaded')
+      resolveImagesIn(body, fileTree, useVaultStore.getState().isLoading)
+      return
+    }
 
     const fileId = resolveWikilink(target, fileTree)
     if (!fileId) {
@@ -55,6 +92,31 @@ async function resolveOnePlaceholder(el: HTMLElement, fileTree: FileTreeNode[]):
       // still one click away, just not auto-expanded.
       const safeSection = section.replace(/!\[\[/g, '[[')
       body.innerHTML = renderBody(safeSection)
+      // A transcluded ```python block's own .python-run-controls slot
+      // (plugin-python.ts) is otherwise never filled in here — Block.tsx/
+      // MarkdownReader wire a live <PythonCodeBlock> into their own
+      // top-level python blocks, but this content lives inside a raw
+      // innerHTML mutation with no React tree to hand a component off to.
+      // Filling it with a static, read-only render of the persisted output
+      // (if any) is the same read-only treatment tables/math already get
+      // when transcluded, without needing a portal into this subtree —
+      // see PythonCodeBlock's own comment for why that's specifically the
+      // pattern to avoid.
+      body.querySelectorAll<HTMLElement>('.python-block').forEach((block) => {
+        const controls = block.querySelector<HTMLElement>('.python-run-controls')
+        if (!controls || !block.dataset.output) return
+        try {
+          const output = JSON.parse(decodeURIComponent(block.dataset.output)) as PersistedPythonOutput
+          controls.innerHTML = renderStaticPythonOutput(output)
+        } catch {
+          // Malformed persisted JSON — leave the slot empty, same as a
+          // block that was never run.
+        }
+      })
+      // Cached *after* the python post-processing above, so a cache hit
+      // (a remount of this same placeholder) redisplays the static output
+      // too, not just the code.
+      resolvedCache.set(key, body.innerHTML)
       el.classList.add('transclusion-loaded')
       // This injection happens outside React's render cycle entirely (a raw
       // innerHTML mutation, not a state change), so useImageResolution's own

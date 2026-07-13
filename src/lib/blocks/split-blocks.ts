@@ -1,4 +1,5 @@
 import MarkdownIt from 'markdown-it'
+import { PYTHON_LANG, PYTHON_OUTPUT_LANG } from '../python/python-syntax'
 
 // Splits raw markdown into top-level block chunks using markdown-it's own
 // tokenizer (no custom plugin chain needed — plugins like wikilink/callout
@@ -37,6 +38,34 @@ export function splitIntoBlocks(markdown: string): Block[] {
     }
 
     if (token.map) {
+      // A ```python fence immediately followed (no blank line) by a
+      // ```python-output fence is one atomic block, not two — same "merge
+      // related adjacent tokens into one block" technique already used
+      // below for a whole GFM table (which merges via a single container's
+      // own .map instead, a different token shape but the same idea).
+      // Without this, dragging/reordering/deleting a block could separate a
+      // code block from the very output it produced. See
+      // python-syntax.ts's serializePythonBlock for the writer side of this
+      // same adjacency convention.
+      const next = tokens[i + 1]
+      const isPythonFence = token.type === 'fence' && token.info.trim().toLowerCase() === PYTHON_LANG
+      const nextIsAdjacentOutput =
+        next !== undefined &&
+        next.level === 0 &&
+        next.type === 'fence' &&
+        next.info.trim().toLowerCase() === PYTHON_OUTPUT_LANG &&
+        next.map !== null &&
+        next.map[0] === token.map[1]
+
+      if (isPythonFence && nextIsAdjacentOutput && next.map) {
+        const [startLine] = token.map
+        const [, endLine] = next.map
+        const rawText = lines.slice(startLine, endLine).join('\n')
+        blocks.push({ id: nextId(), rawText, startLine })
+        i += 2
+        continue
+      }
+
       // Either a self-contained leaf (fence, hr, html_block) or a
       // container's _open token — either way .map gives the block's full
       // [startLine, endLine) range, including all of its nested children.

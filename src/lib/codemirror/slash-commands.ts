@@ -25,6 +25,12 @@ const SNIPPETS: Snippet[] = [
   // the exact raw-text cursor position here is essentially cosmetic.
   { label: 'Math', detail: 'equation ($$)', snippet: '$$\n$$', cursorOffset: 2 },
   { label: 'Code block', detail: 'fenced code', snippet: '```\n\n```', cursorOffset: 4 },
+  // ```python specifically, not the generic "Code block" above — this
+  // fence language gets a Run button + output panel (plugin-python.ts) the
+  // moment it's viewed in Read mode/inactive, so it's worth its own
+  // discoverable entry rather than making users remember to type "python"
+  // after the generic code-block snippet.
+  { label: 'Python', detail: 'runnable code', snippet: '```python\n\n```', cursorOffset: 10 },
   { label: 'Heading', detail: '##', snippet: '## ', cursorOffset: 3 },
   { label: 'Bullet list', detail: '-', snippet: '- ', cursorOffset: 2 },
   { label: 'Task list', detail: '- [ ]', snippet: '- [ ] ', cursorOffset: 6 },

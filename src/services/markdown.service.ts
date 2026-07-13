@@ -9,6 +9,7 @@ import { wikilinkPlugin } from '../lib/markdown-plugins/plugin-wikilink'
 import { blockIdPlugin } from '../lib/markdown-plugins/plugin-block-id'
 import { transclusionPlugin } from '../lib/markdown-plugins/plugin-transclusion'
 import { chartPlugin } from '../lib/markdown-plugins/plugin-chart'
+import { pythonPlugin } from '../lib/markdown-plugins/plugin-python'
 import { mediaEmbedPlugin } from '../lib/markdown-plugins/plugin-media-embed'
 import { sourceLinePlugin } from '../lib/markdown-plugins/plugin-source-line'
 import { renderMath } from '../lib/katex-setup'
@@ -94,6 +95,7 @@ function getRenderer(): MarkdownIt {
       .use(tagPlugin) // #tag
       .use(wikilinkPlugin) // [[Note]], [[Note#Heading]], [[Note^block-id]], [[Note|Alias]]
       .use(chartPlugin) // ```mermaid / ```plotly / ```chartjs fenced code blocks
+      .use(pythonPlugin) // ```python fenced code blocks — adds a Run button + output panel
       .use(mediaEmbedPlugin) // YouTube/audio/PDF via ![](...) — anything else stays a plain <img>
       .use(headingIdPlugin)
       .use(sourceLinePlugin) // data-src-line on every top-level block, for scroll-to-line targeting

@@ -3,6 +3,7 @@ import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import { X, BookOpen } from 'lucide-react'
 import { useTabsStore, HELP_TAB_ID } from '../../stores/tabs.store'
 import { useVaultStore } from '../../stores/vault.store'
+import { usePythonKernelStore } from '../../stores/python-kernel.store'
 import { findFileName } from '../../lib/vault-tree'
 
 const DRAG_MIME = 'application/x-sanctum-tab'
@@ -41,6 +42,11 @@ export function TabBar() {
   function handleClose(e: MouseEvent, fileId: string) {
     e.stopPropagation()
     const nextId = closeTab(fileId)
+    // Frees that note's Pyodide worker (if it ever started one) — kernels
+    // deliberately stay alive across a mere navigate-away/back (switching
+    // tabs shouldn't lose Python state), but an actually-closed tab has no
+    // reason to keep a multi-MB WASM runtime sitting in memory.
+    usePythonKernelStore.getState().closeKernel(fileId)
     // Only redirect if the tab being closed was the one actually open —
     // closing a background tab shouldn't move you away from what you're
     // currently reading.
