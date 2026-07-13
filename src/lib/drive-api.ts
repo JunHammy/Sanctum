@@ -9,6 +9,10 @@ export interface DriveFile {
   modifiedTime?: string
   size?: string
   parents?: string[]
+  // Drive custom metadata — properties are always string-valued, so the
+  // reorder feature's fractional-index `order` is stored as a stringified
+  // number here (see setFileOrder / vault.store.ts's buildFileTree).
+  properties?: Record<string, string>
 }
 
 export class DriveApiError extends Error {
@@ -41,7 +45,7 @@ export async function listAllFiles(token: string): Promise<DriveFile[]> {
   do {
     const params = new URLSearchParams({
       q: 'trashed = false',
-      fields: 'nextPageToken, files(id,name,mimeType,modifiedTime,size,parents)',
+      fields: 'nextPageToken, files(id,name,mimeType,modifiedTime,size,parents,properties)',
       pageSize: '1000',
     })
     if (pageToken) params.set('pageToken', pageToken)
@@ -93,6 +97,18 @@ export async function renameFile(token: string, fileId: string, name: string): P
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name }),
+  })
+}
+
+// Fractional-index sort key for manual drag-reorder, persisted as a Drive
+// custom property rather than a new `.vault/config.json` — cheap PATCH,
+// same shape renameFile already uses. Properties are string-valued only,
+// so the number is stringified here and parsed back in buildFileTree.
+export async function setFileOrder(token: string, fileId: string, order: number): Promise<DriveFile> {
+  return request(token, `${DRIVE_API_BASE}/files/${fileId}?fields=id,name,mimeType,properties`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ properties: { order: String(order) } }),
   })
 }
 

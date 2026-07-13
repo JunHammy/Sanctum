@@ -12,6 +12,8 @@ import { useNoteStore } from './note.store'
 import { useToastStore } from './toast.store'
 import { useVaultPreferenceStore } from './vault-preference.store'
 import { toUserMessage, logError, isOfflineError } from '../lib/error-messages'
+import { fixLinksAfterRename } from '../lib/rename-links'
+import { isDescendantOf } from '../lib/vault-tree'
 import type { VaultMeta, DriveFile } from '../services/drive.service'
 import type { FileTreeNode } from '../types/vault.types'
 
@@ -50,6 +52,16 @@ interface VaultState {
   // files), and is now genuinely used for both notes and folders (folder-
   // into-folder drag nesting), so the old name stopped being accurate.
   moveNode: (id: string, newParentId: string, oldParentId: string) => Promise<void>
+  // Renames on Drive, updates the tree in place, and — for notes only —
+  // rewrites every [[OldName]] wikilink elsewhere in the vault to point at
+  // the new name (see rename-links.ts). Folders aren't linkable, so no
+  // link scan runs for them.
+  renameNode: (id: string, newName: string) => Promise<void>
+  // Manual drag-reorder within the same parent — folders and files sort as
+  // separate groups (see sortGroup), so a folder can only be reordered
+  // relative to sibling folders, a file only relative to sibling files.
+  // Cross-folder moves remain moveNode's job, not this one.
+  reorderNode: (draggedId: string, targetId: string, side: 'before' | 'after') => Promise<void>
   deleteNode: (id: string) => Promise<void>
   // Called on sign-out — a different Google account has an entirely
   // different Drive, so a stale vaults list/activeVaultId from the
@@ -59,12 +71,21 @@ interface VaultState {
 
 const FOLDER_MIME = 'application/vnd.google-apps.folder'
 
+// Within a folders-or-files group: explicitly ordered siblings (dragged at
+// least once, see reorderNode) sort by their fractional order value first,
+// ascending; everything else falls back to alphabetical and is appended
+// after — so a brand-new sibling doesn't need an eager order backfill, it
+// just sorts alphabetically among the unordered group until it's dragged.
+function sortGroup(nodes: FileTreeNode[]): FileTreeNode[] {
+  const ordered = nodes.filter((n) => n.order !== undefined).sort((a, b) => a.order! - b.order!)
+  const unordered = nodes.filter((n) => n.order === undefined).sort((a, b) => a.name.localeCompare(b.name))
+  return [...ordered, ...unordered]
+}
+
 function sortNodes(nodes: FileTreeNode[]): FileTreeNode[] {
-  return [...nodes].sort((a, b) => {
-    if (a.type === 'folder' && b.type !== 'folder') return -1
-    if (a.type !== 'folder' && b.type === 'folder') return 1
-    return a.name.localeCompare(b.name)
-  })
+  const folders = sortGroup(nodes.filter((n) => n.type === 'folder'))
+  const rest = sortGroup(nodes.filter((n) => n.type !== 'folder'))
+  return [...folders, ...rest]
 }
 
 function groupByParent(files: DriveFile[]): Map<string, DriveFile[]> {
@@ -87,13 +108,14 @@ function buildFileTree(files: DriveFile[], rootId: string): FileTreeNode[] {
     const nodes: FileTreeNode[] = []
 
     for (const item of children) {
+      const order = item.properties?.order !== undefined ? Number(item.properties.order) : undefined
       if (item.mimeType === FOLDER_MIME) {
         if (item.name === '.vault') continue // hidden config folder, MP §7
-        nodes.push({ id: item.id, name: item.name, type: 'folder', children: build(item.id) })
+        nodes.push({ id: item.id, name: item.name, type: 'folder', children: build(item.id), order })
       } else if (item.name.endsWith('.md')) {
-        nodes.push({ id: item.id, name: item.name, type: 'file', modifiedTime: item.modifiedTime })
+        nodes.push({ id: item.id, name: item.name, type: 'file', modifiedTime: item.modifiedTime, order })
       } else {
-        nodes.push({ id: item.id, name: item.name, type: 'attachment', mimeType: item.mimeType })
+        nodes.push({ id: item.id, name: item.name, type: 'attachment', mimeType: item.mimeType, order })
       }
     }
 
@@ -155,6 +177,78 @@ function removeNode(nodes: FileTreeNode[], id: string): FileTreeNode[] {
     .map((node) => (node.type === 'folder' ? { ...node, children: removeNode(node.children, id) } : node))
 }
 
+// Immutably replaces a node in place via updater, re-sorting just the
+// sibling array it lives in (a rename can change alphabetical position).
+function replaceNode(nodes: FileTreeNode[], id: string, updater: (node: FileTreeNode) => FileTreeNode): FileTreeNode[] {
+  if (nodes.some((n) => n.id === id)) {
+    return sortNodes(nodes.map((n) => (n.id === id ? updater(n) : n)))
+  }
+  return nodes.map((node) => (node.type === 'folder' ? { ...node, children: replaceNode(node.children, id, updater) } : node))
+}
+
+// Returns the sibling array (root list, or some folder's children) that
+// directly contains the node with this id — used by reorderNode to compute
+// the drop position among them, whether or not the dragged node currently
+// lives in that same array (see findParentId below for the cross-parent case).
+function findSiblings(nodes: FileTreeNode[], id: string): FileTreeNode[] | null {
+  if (nodes.some((n) => n.id === id)) return nodes
+  for (const node of nodes) {
+    if (node.type === 'folder') {
+      const found = findSiblings(node.children, id)
+      if (found) return found
+    }
+  }
+  return null
+}
+
+// The id of the folder (or rootFolderId) that directly contains the node
+// with this id — used by reorderNode to detect a cross-parent drop (an
+// item dragged out of one folder and dropped among a different level's
+// siblings should move there, not just silently reject like a same-parent-
+// only reorder would).
+function findParentId(nodes: FileTreeNode[], id: string, currentParentId: string): string | null {
+  if (nodes.some((n) => n.id === id)) return currentParentId
+  for (const node of nodes) {
+    if (node.type === 'folder') {
+      const found = findParentId(node.children, id, node.id)
+      if (found) return found
+    }
+  }
+  return null
+}
+
+// Debounces the actual Drive write for reorderNode, keyed per dragged item
+// — the optimistic tree update below still happens synchronously on every
+// drop, but rapid repeated re-drags of the *same* item (a fast back-and-
+// forth drag) would otherwise fire one PATCH per intermediate drop,
+// piling up concurrent requests and risking Drive's per-user rate limit.
+// Confirmed real bug: reordering repeatedly in quick succession made the
+// sidebar visibly lag and eventually stop responding — each drop's
+// network call was outliving the next drop, and the growing backlog of
+// in-flight requests (plus their eventual rate-limit failures re-setting
+// state) is what that lag was. Only the position as of the last drop
+// within this window actually needs to reach Drive.
+const REORDER_PERSIST_DELAY_MS = 500
+const pendingReorderWrites = new Map<string, ReturnType<typeof setTimeout>>()
+
+// Assigns every node in an already-sorted group a numeric position, real
+// `order` values kept as-is and unordered nodes (alphabetical tail)
+// synthesized as increasing values past the last real one — gives
+// reorderNode a consistent numeric anchor to compute a fractional midpoint
+// against even when neither neighbor has ever been explicitly ordered yet.
+const REORDER_GAP = 1000
+function effectiveOrders(sortedGroup: FileTreeNode[]): number[] {
+  let last = 0
+  return sortedGroup.map((node) => {
+    if (node.order !== undefined) {
+      last = node.order
+      return node.order
+    }
+    last += REORDER_GAP
+    return last
+  })
+}
+
 function findNode(nodes: FileTreeNode[], id: string): FileTreeNode | null {
   for (const node of nodes) {
     if (node.id === id) return node
@@ -187,6 +281,49 @@ function registerNewNoteFile(
   useTagsStore.getState().updateForNote(file.id, content)
 }
 
+// Diffs the tree this device last knew about (from cache.service's
+// IndexedDB, which survives a page refresh — unlike in-memory state) against
+// the just-fetched tree, to catch notes renamed directly in Google Drive
+// rather than through Sanctum's own rename button. Only notes are checked
+// (flattenFiles only returns type: 'file' nodes) — folders aren't linkable,
+// so a folder renamed externally needs no link fix-up, just the tree
+// refresh loadActiveVaultTree already does unconditionally.
+async function detectAndFixExternalRenames(previousTree: FileTreeNode[], freshTree: FileTreeNode[]) {
+  const previousFiles = searchService.flattenFiles(previousTree)
+  const freshById = new Map(searchService.flattenFiles(freshTree).map((f) => [f.id, f]))
+  const renames = previousFiles
+    .map((prev) => ({ prev, fresh: freshById.get(prev.id) }))
+    .filter((r) => r.fresh && r.fresh.name !== r.prev.name) as { prev: { id: string; name: string }; fresh: { id: string; name: string } }[]
+
+  if (renames.length === 0) return
+
+  let totalLinks = 0
+  let totalNotes = 0
+  for (const { prev, fresh } of renames) {
+    try {
+      // Resolved against previousTree (the old id-to-name mapping) for
+      // every rename in this batch, consistently — even if two renamed
+      // notes link to each other, each fix-up needs the *old* names to
+      // find what used to resolve where.
+      const newNameNoExt = fresh.name.replace(/\.md$/, '')
+      const { updatedNoteCount, linksUpdated } = await fixLinksAfterRename(prev.id, newNameNoExt, previousTree, freshTree)
+      totalLinks += linksUpdated
+      totalNotes += updatedNoteCount
+    } catch (err) {
+      logError('vault.detectExternalRename', err)
+    }
+  }
+
+  if (totalLinks > 0) {
+    useToastStore
+      .getState()
+      .show(
+        `Detected ${renames.length} rename${renames.length === 1 ? '' : 's'} made in Google Drive — updated ${totalLinks} link${totalLinks === 1 ? '' : 's'} in ${totalNotes} note${totalNotes === 1 ? '' : 's'}`,
+        'info',
+      )
+  }
+}
+
 // Loads the currently active vault's file tree + search/tag/backlink
 // indices. Split out from loadVault/switchVault since both need exactly
 // this same sequence once activeVaultId is already settled.
@@ -211,6 +348,10 @@ async function loadActiveVaultTree(get: () => VaultState, set: (partial: Partial
     if (get().activeVaultId !== requestedVaultId) return
     const fileTree = buildFileTree(files, requestedVaultId)
     set({ fileTree, isLoading: false, isOfflineFallback: false })
+    // Read before the write-through below overwrites it — this is the tree
+    // as of this device's last successful load, the baseline
+    // detectAndFixExternalRenames needs to notice a Drive-side rename.
+    const previousTree = await cacheService.getCachedFileTree(requestedVaultId)
     // Fire-and-forget write-through — lets the sidebar render offline the
     // next time this vault can't be reached, same convention as the
     // buildIndex/buildMap calls just below it not blocking on completion.
@@ -220,6 +361,10 @@ async function loadActiveVaultTree(get: () => VaultState, set: (partial: Partial
     useSearchStore.getState().buildIndex(fileTree)
     useBacklinksStore.getState().buildMap(fileTree)
     useTagsStore.getState().buildMap(fileTree)
+    // Fire-and-forget — a note renamed directly in Google Drive (outside
+    // Sanctum) needs its links elsewhere in the vault fixed up too, same as
+    // an in-app rename does via renameNode.
+    if (previousTree) detectAndFixExternalRenames(previousTree, fileTree)
   } catch (err) {
     if (get().activeVaultId !== requestedVaultId) return
     if (isOfflineError(err)) {
@@ -410,6 +555,126 @@ export const useVaultStore = create<VaultState>()((set, get) => ({
       const withoutNode = removeNode(fileTree, id)
       set({ fileTree: insertNode(withoutNode, newParentId, rootFolderId, node) })
     }
+  },
+
+  renameNode: async (id, newName) => {
+    const { fileTree, rootFolderId } = get()
+    const node = findNode(fileTree, id)
+    if (!node || !rootFolderId) return
+
+    const oldTree = fileTree
+    const isNote = node.type === 'file'
+    const driveFilename = isNote ? (newName.endsWith('.md') ? newName : `${newName}.md`) : newName
+    const displayName = driveFilename.replace(/\.md$/, '')
+
+    await driveService.renameFile(id, driveFilename)
+
+    const nextTree = replaceNode(fileTree, id, (n) => ({ ...n, name: driveFilename }))
+    set({ fileTree: nextTree })
+    cacheService.setCachedFileTree(rootFolderId, nextTree) // fire-and-forget write-through
+
+    if (!isNote) {
+      useToastStore.getState().show(`Renamed to "${displayName}"`, 'success')
+      return
+    }
+
+    // Re-index the renamed note itself — content is unchanged, but search's
+    // title falls back to the filename when there's no frontmatter title,
+    // so it needs a refresh even though the raw body didn't change.
+    try {
+      const cached = await cacheService.getCachedContent(id)
+      const raw =
+        cached && node.type === 'file' && node.modifiedTime && cached.modifiedTime === node.modifiedTime
+          ? cached.raw
+          : await driveService.readFile(id)
+      await useSearchStore.getState().updateIndexForNote(id, raw)
+      await useBacklinksStore.getState().updateForNote(id, raw, nextTree)
+      await useTagsStore.getState().updateForNote(id, raw)
+    } catch {
+      // Best-effort re-index — the rename itself already succeeded.
+    }
+
+    const { updatedNoteCount, linksUpdated } = await fixLinksAfterRename(id, displayName, oldTree, nextTree)
+    const message =
+      updatedNoteCount > 0
+        ? `Renamed to "${displayName}" — updated ${linksUpdated} link${linksUpdated === 1 ? '' : 's'} in ${updatedNoteCount} note${updatedNoteCount === 1 ? '' : 's'}`
+        : `Renamed to "${displayName}"`
+    useToastStore.getState().show(message, 'success')
+  },
+
+  // Dropping before/after a sibling reorders in place; dropping before/
+  // after an item that lives under a *different* parent moves the dragged
+  // item there too, landing at that exact position — same one-gesture
+  // "drag it out among the items you can see" convention VS Code's own
+  // explorer uses, rather than requiring a separate dedicated drop target
+  // just to change an item's parent.
+  reorderNode: async (draggedId, targetId, side) => {
+    if (draggedId === targetId) return
+    const { fileTree, rootFolderId } = get()
+    if (!rootFolderId) return
+    const draggedNode = findNode(fileTree, draggedId)
+    const targetNode = findNode(fileTree, targetId)
+    if (!draggedNode || !targetNode) return
+    if ((draggedNode.type === 'folder') !== (targetNode.type === 'folder')) return // folders/files never interleave
+    // A folder can't be dropped next to one of its own descendants — same
+    // corruption risk moveNode's own "into" path already guards against.
+    if (draggedNode.type === 'folder' && isDescendantOf(fileTree, draggedId, targetId)) return
+
+    const siblings = findSiblings(fileTree, targetId)
+    if (!siblings) return
+    const targetParentId = findParentId(fileTree, targetId, rootFolderId) ?? rootFolderId
+    const draggedParentId = findParentId(fileTree, draggedId, rootFolderId) ?? rootFolderId
+    const isCrossParent = draggedParentId !== targetParentId
+
+    const group = siblings.filter((n) => (n.type === 'folder') === (draggedNode.type === 'folder') && n.id !== draggedId)
+    const sortedGroup = sortGroup(group)
+    const positions = effectiveOrders(sortedGroup)
+    const targetIdx = sortedGroup.findIndex((n) => n.id === targetId)
+    if (targetIdx === -1) return
+
+    const newOrder =
+      side === 'before'
+        ? (positions[targetIdx] + (targetIdx > 0 ? positions[targetIdx - 1] : positions[targetIdx] - REORDER_GAP * 2)) / 2
+        : (positions[targetIdx] +
+            (targetIdx < positions.length - 1 ? positions[targetIdx + 1] : positions[targetIdx] + REORDER_GAP * 2)) /
+          2
+
+    // Optimistic: a drag is a fluid, continuous gesture, so the tree
+    // updates immediately — awaiting the Drive write first (as every other
+    // mutation here does) made a drop visibly lag behind the cursor.
+    // Reverted below if the write fails.
+    const previousTree = fileTree
+    const nextTree = isCrossParent
+      ? insertNode(removeNode(fileTree, draggedId), targetParentId, rootFolderId, { ...draggedNode, order: newOrder })
+      : replaceNode(fileTree, draggedId, (n) => ({ ...n, order: newOrder }))
+    set({ fileTree: nextTree })
+    cacheService.setCachedFileTree(rootFolderId, nextTree) // fire-and-forget write-through
+
+    // Debounced Drive write — see pendingReorderWrites' own comment. A
+    // repeated re-drag of this same item before the delay elapses cancels
+    // the previous pending write and reschedules, so only the position as
+    // of the last drop in a burst actually reaches Drive.
+    const existingTimer = pendingReorderWrites.get(draggedId)
+    if (existingTimer) clearTimeout(existingTimer)
+    pendingReorderWrites.set(
+      draggedId,
+      setTimeout(() => {
+        pendingReorderWrites.delete(draggedId)
+        void (async () => {
+          try {
+            if (isCrossParent) await driveService.moveFile(draggedId, targetParentId, draggedParentId)
+            await driveService.setFileOrder(draggedId, newOrder)
+          } catch (err) {
+            if (get().fileTree === nextTree) {
+              set({ fileTree: previousTree })
+              cacheService.setCachedFileTree(rootFolderId, previousTree)
+            }
+            logError('vault.reorderNode', err)
+            useToastStore.getState().show(toUserMessage(err, 'Could not move that item.'), 'error')
+          }
+        })()
+      }, REORDER_PERSIST_DELAY_MS),
+    )
   },
 
   // Trashes via Drive (recoverable from Drive's own Trash, not a permanent

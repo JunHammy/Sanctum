@@ -3,6 +3,10 @@ export interface FileTreeFolder {
   name: string
   type: 'folder'
   children: FileTreeNode[]
+  // Fractional-index sort key for manual drag-reorder — see vault.store.ts's
+  // sortNodes/reorderNode. Absent until the item is first dragged; sorts
+  // alphabetically among other unordered siblings until then.
+  order?: number
 }
 
 export interface FileTreeFile {
@@ -10,6 +14,7 @@ export interface FileTreeFile {
   name: string
   type: 'file'
   modifiedTime?: string
+  order?: number
 }
 
 export interface FileTreeAttachment {
@@ -17,6 +22,7 @@ export interface FileTreeAttachment {
   name: string
   type: 'attachment'
   mimeType: string
+  order?: number
 }
 
 export type FileTreeNode = FileTreeFolder | FileTreeFile | FileTreeAttachment

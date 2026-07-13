@@ -190,6 +190,20 @@ export function moveFile(fileId: string, newParentId: string, oldParentId: strin
   return withAuth((token) => driveApi.moveFile(token, fileId, newParentId, oldParentId))
 }
 
+// Generic note/folder rename — distinct from renameVaultFolder above, which
+// is specifically for the vault root and returns a VaultMeta shape.
+// driveApi.renameFile itself is already fully generic; this just adds the
+// same assertOnline/withAuth wrapping every other mutating call here has.
+export function renameFile(fileId: string, name: string): Promise<DriveFile> {
+  assertOnline()
+  return withAuth((token) => driveApi.renameFile(token, fileId, name))
+}
+
+export function setFileOrder(fileId: string, order: number): Promise<DriveFile> {
+  assertOnline()
+  return withAuth((token) => driveApi.setFileOrder(token, fileId, order))
+}
+
 export function trashFile(fileId: string): Promise<void> {
   assertOnline()
   return withAuth((token) => driveApi.trashFile(token, fileId))
