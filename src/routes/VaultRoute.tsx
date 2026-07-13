@@ -1,13 +1,14 @@
 import { useEffect } from 'react'
 import { useParams } from 'react-router-dom'
-import { useFileTree } from '../hooks/useFileTree'
-import { AppShell } from '../components/layout/AppShell'
 import { NoteView } from '../components/editor/NoteView'
 import { useNoteStore } from '../stores/note.store'
 
+// AppShell (Header/Sidebar/TabBar) is mounted once by AppShellLayout, the
+// shared parent route this renders inside of via <Outlet/> — this only
+// needs to provide its own inner content now. See AppShellLayout's own
+// comment for why that split exists.
 export function VaultRoute() {
   const { fileId } = useParams<{ fileId?: string }>()
-  const { fileTree, isLoading, error, refresh } = useFileTree()
   const resetNote = useNoteStore((s) => s.reset)
 
   // Landing on the bare /vault route (no fileId) means no note is open —
@@ -20,13 +21,5 @@ export function VaultRoute() {
     if (!fileId) resetNote()
   }, [fileId, resetNote])
 
-  return (
-    <AppShell fileTree={fileTree} isLoading={isLoading} error={error} onRefresh={refresh}>
-      {fileId ? (
-        <NoteView fileId={fileId} />
-      ) : (
-        <p style={{ color: 'var(--text-muted)' }}>Select a note from the sidebar.</p>
-      )}
-    </AppShell>
-  )
+  return fileId ? <NoteView fileId={fileId} /> : <p style={{ color: 'var(--text-muted)' }}>Select a note from the sidebar.</p>
 }

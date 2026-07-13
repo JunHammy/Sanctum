@@ -1,25 +1,24 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { AppShell } from '../components/layout/AppShell'
 import { Modal } from '../components/common/Modal'
 import { renderBody } from '../services/markdown.service'
 import { useCharts } from '../hooks/useCharts'
 import { useDragScrollTables } from '../hooks/useDragScrollTables'
 import { useTableMinWidth } from '../hooks/useTableMinWidth'
 import { useTableExpand } from '../hooks/useTableExpand'
-import { useFileTree } from '../hooks/useFileTree'
 import { useTabsStore, HELP_TAB_ID } from '../stores/tabs.store'
 import GUIDE_MARKDOWN from '../content/syntax-guide.md?raw'
 
 // A static reference page, not a real vault note, but rendered inside the
-// exact same AppShell every note uses (Header, Sidebar, TabBar all come
-// along for free) — registering HELP_TAB_ID as an open tab on mount is
-// what makes it show up in the tab strip and behave like any other open
-// note (click a sidebar note to navigate away, click back to return here,
-// close the tab), rather than being a navigational dead end reachable only
-// via the Header link and the browser's own back button. See
-// tabs.store.ts's own comment on HELP_TAB_ID, and TabBar.tsx for the
-// special-casing that turns this one id into "Syntax Guide" instead of a
-// file lookup.
+// same shared AppShell every note uses (Header, Sidebar, TabBar all come
+// along for free via AppShellLayout, the parent route this renders inside
+// of — see that file's own comment) — registering HELP_TAB_ID as an open
+// tab on mount is what makes it show up in the tab strip and behave like
+// any other open note (click a sidebar note to navigate away, click back
+// to return here, close the tab), rather than being a navigational dead
+// end reachable only via the Header link and the browser's own back
+// button. See tabs.store.ts's own comment on HELP_TAB_ID, and TabBar.tsx
+// for the special-casing that turns this one id into "Syntax Guide"
+// instead of a file lookup.
 //
 // Content is rendered through the exact same renderBody() pipeline every
 // note uses, so every live example here (callouts, tables, math, mermaid,
@@ -31,7 +30,6 @@ import GUIDE_MARKDOWN from '../content/syntax-guide.md?raw'
 export function HelpRoute() {
   const containerRef = useRef<HTMLDivElement>(null)
   const expandedRef = useRef<HTMLDivElement>(null)
-  const { fileTree, isLoading, error, refresh } = useFileTree()
   // Same expand-to-fullscreen wiring as MarkdownReader.tsx — the guide's
   // table example describes the expand icon, so it should actually work
   // here too, per this page's own "nothing here is a mockup" principle.
@@ -54,7 +52,7 @@ export function HelpRoute() {
   }, [])
 
   return (
-    <AppShell fileTree={fileTree} isLoading={isLoading} error={error} onRefresh={refresh}>
+    <>
       <div ref={containerRef} className="markdown-body" dangerouslySetInnerHTML={{ __html: html }} />
       <Modal
         isOpen={expandedTableHtml !== null}
@@ -64,6 +62,6 @@ export function HelpRoute() {
       >
         <div ref={expandedRef} className="markdown-body" dangerouslySetInnerHTML={{ __html: expandedTableHtml ?? '' }} />
       </Modal>
-    </AppShell>
+    </>
   )
 }
