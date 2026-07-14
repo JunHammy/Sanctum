@@ -19,6 +19,7 @@ import {
   Upload,
   FileSpreadsheet,
   FileText,
+  NotebookText,
   MoreHorizontal,
   ChevronDown,
   Check,
@@ -36,6 +37,7 @@ import { exportVaultZip } from '../../services/backup.service'
 import { importDocx } from '../../services/docx-import.service'
 import { importCsv } from '../../services/csv-import.service'
 import { importXlsx } from '../../services/xlsx-import.service'
+import { importIpynb } from '../../services/ipynb-import.service'
 import { FileTree } from '../sidebar/FileTree'
 import { TagBrowser } from '../sidebar/TagBrowser'
 import { LoadingSpinner } from '../common/LoadingSpinner'
@@ -81,12 +83,14 @@ export function Sidebar({ nodes, isLoading, error, onRefresh }: SidebarProps) {
   // busy, which reads as if the wrong import is running.
   const [isImportingCsv, setIsImportingCsv] = useState(false)
   const [isImportingXlsx, setIsImportingXlsx] = useState(false)
+  const [isImportingIpynb, setIsImportingIpynb] = useState(false)
   const [isUploadingPdf, setIsUploadingPdf] = useState(false)
   const [isRootDropTarget, setIsRootDropTarget] = useState(false)
   const [isResizing, setIsResizing] = useState(false)
   const importInputRef = useRef<HTMLInputElement>(null)
   const csvImportInputRef = useRef<HTMLInputElement>(null)
   const xlsxImportInputRef = useRef<HTMLInputElement>(null)
+  const ipynbImportInputRef = useRef<HTMLInputElement>(null)
   const pdfUploadInputRef = useRef<HTMLInputElement>(null)
   const moreMenuRef = useRef<HTMLDivElement>(null)
   const vaultMenuRef = useRef<HTMLDivElement>(null)
@@ -209,6 +213,11 @@ export function Sidebar({ nodes, isLoading, error, onRefresh }: SidebarProps) {
   function handleImportXlsxClick() {
     setMoreMenuOpen(false)
     xlsxImportInputRef.current?.click()
+  }
+
+  function handleImportIpynbClick() {
+    setMoreMenuOpen(false)
+    ipynbImportInputRef.current?.click()
   }
 
   function handlePdfUploadClick() {
@@ -343,6 +352,26 @@ export function Sidebar({ nodes, isLoading, error, onRefresh }: SidebarProps) {
       logError('sidebar.importXlsx', err)
     } finally {
       setIsImportingXlsx(false)
+    }
+  }
+
+  async function handleImportIpynbFile(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+
+    const title = file.name.replace(/\.ipynb$/i, '').trim() || 'Imported notebook'
+    setIsImportingIpynb(true)
+    try {
+      await toastPromise(() => importIpynb(file), {
+        loading: `Importing "${title}"…`,
+        success: `Imported "${title}"`,
+        error: (err) => toUserMessage(err, `Could not import "${title}".`),
+      })
+    } catch (err) {
+      logError('sidebar.importIpynb', err)
+    } finally {
+      setIsImportingIpynb(false)
     }
   }
 
@@ -621,6 +650,21 @@ export function Sidebar({ nodes, isLoading, error, onRefresh }: SidebarProps) {
                           <button
                             type="button"
                             className="flex w-full items-center gap-2.5 rounded px-2.5 py-2 text-left text-sm hover:bg-[var(--bg-tertiary)] disabled:opacity-50"
+                            onClick={handleImportIpynbClick}
+                            disabled={isImportingIpynb || !isOnline}
+                          >
+                            <NotebookText
+                              size={16}
+                              style={{ color: 'var(--text-muted)' }}
+                              className={isImportingIpynb ? 'animate-pulse' : undefined}
+                            />
+                            <span style={{ color: 'var(--text-primary)' }}>
+                              {isImportingIpynb ? 'Importing…' : 'Import Jupyter Notebook (.ipynb)'}
+                            </span>
+                          </button>
+                          <button
+                            type="button"
+                            className="flex w-full items-center gap-2.5 rounded px-2.5 py-2 text-left text-sm hover:bg-[var(--bg-tertiary)] disabled:opacity-50"
                             onClick={handlePdfUploadClick}
                             disabled={isUploadingPdf || !isOnline}
                           >
@@ -630,7 +674,7 @@ export function Sidebar({ nodes, isLoading, error, onRefresh }: SidebarProps) {
                               className={isUploadingPdf ? 'animate-pulse' : undefined}
                             />
                             <span style={{ color: 'var(--text-primary)' }}>
-                              {isUploadingPdf ? 'Uploading…' : 'Upload PDF (.pdf)'}
+                              {isUploadingPdf ? 'Importing…' : 'Import PDF (.pdf)'}
                             </span>
                           </button>
                           <button
@@ -669,6 +713,13 @@ export function Sidebar({ nodes, isLoading, error, onRefresh }: SidebarProps) {
                     accept=".xlsx,.xls"
                     className="hidden"
                     onChange={handleImportXlsxFile}
+                  />
+                  <input
+                    ref={ipynbImportInputRef}
+                    type="file"
+                    accept=".ipynb"
+                    className="hidden"
+                    onChange={handleImportIpynbFile}
                   />
                   <input
                     ref={pdfUploadInputRef}
