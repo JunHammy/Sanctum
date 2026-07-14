@@ -1,18 +1,26 @@
 import { useState, type DragEvent, type MouseEvent } from 'react'
 import { useNavigate, useParams, useLocation } from 'react-router-dom'
-import { X, BookOpen } from 'lucide-react'
+import { X, BookOpen, FileText } from 'lucide-react'
 import { useTabsStore, HELP_TAB_ID } from '../../stores/tabs.store'
 import { useVaultStore } from '../../stores/vault.store'
 import { usePythonKernelStore } from '../../stores/python-kernel.store'
-import { findFileName } from '../../lib/vault-tree'
+import { findFileName, findNodeById } from '../../lib/vault-tree'
+import type { FileTreeNode } from '../../types/vault.types'
 
 const DRAG_MIME = 'application/x-sanctum-tab'
 
-// The one non-file tab id (see tabs.store.ts) maps to a fixed path instead
-// of /vault/note/:id — everything else about it (open, close, reorder,
-// active-highlight) reuses the exact same tab machinery as a real note.
-function tabPath(id: string): string {
-  return id === HELP_TAB_ID ? '/help' : `/vault/note/${id}`
+function isPdfTab(id: string, fileTree: FileTreeNode[]): boolean {
+  const node = findNodeById(fileTree, id)
+  return node?.type === 'attachment' && node.mimeType === 'application/pdf'
+}
+
+// The Help tab id (see tabs.store.ts) maps to a fixed path; a PDF
+// attachment maps to its own viewer route; everything else is a real note
+// — open/close/reorder/active-highlight all reuse the exact same tab
+// machinery regardless of which of the three this resolves to.
+function tabPath(id: string, fileTree: FileTreeNode[]): string {
+  if (id === HELP_TAB_ID) return '/help'
+  return isPdfTab(id, fileTree) ? `/vault/pdf/${id}` : `/vault/note/${id}`
 }
 
 // Sits above ContentPane (not spanning the sidebar), same placement
@@ -51,7 +59,7 @@ export function TabBar() {
     // closing a background tab shouldn't move you away from what you're
     // currently reading.
     if (isTabActive(fileId)) {
-      navigate(nextId ? tabPath(nextId) : '/vault')
+      navigate(nextId ? tabPath(nextId, fileTree) : '/vault')
     }
   }
 
@@ -83,6 +91,7 @@ export function TabBar() {
       {openFileIds.map((id) => {
         const isActive = isTabActive(id)
         const isHelp = id === HELP_TAB_ID
+        const isPdf = !isHelp && isPdfTab(id, fileTree)
         const name = isHelp ? 'Syntax Guide' : (findFileName(fileTree, id) ?? 'Untitled').replace(/\.md$/, '')
         return (
           <div
@@ -91,9 +100,9 @@ export function TabBar() {
             tabIndex={0}
             draggable
             aria-current={isActive || undefined}
-            onClick={() => navigate(tabPath(id))}
+            onClick={() => navigate(tabPath(id, fileTree))}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') navigate(tabPath(id))
+              if (e.key === 'Enter') navigate(tabPath(id, fileTree))
             }}
             onDragStart={(e) => {
               e.dataTransfer.setData(DRAG_MIME, id)
@@ -115,6 +124,7 @@ export function TabBar() {
             }}
           >
             {isHelp && <BookOpen size={13} className="shrink-0" />}
+            {isPdf && <FileText size={13} className="shrink-0" />}
             <span className="max-w-40 truncate">{name}</span>
             <button
               type="button"

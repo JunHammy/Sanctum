@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { LoginRoute } from './LoginRoute'
 import { VaultRoute } from './VaultRoute'
+import { PdfRoute } from './PdfRoute'
 import { VaultManagerRoute } from './VaultManagerRoute'
 import { HelpRoute } from './HelpRoute'
 import { SettingsRoute } from './SettingsRoute'
@@ -17,6 +18,7 @@ export function AppRoutes() {
       <Route element={<AppShellLayout />}>
         <Route path="/vault" element={<VaultRoute />} />
         <Route path="/vault/note/:fileId" element={<VaultRoute />} />
+        <Route path="/vault/pdf/:fileId" element={<PdfRoute />} />
         <Route path="/help" element={<HelpRoute />} />
       </Route>
       <Route path="/settings" element={<SettingsRoute />} />

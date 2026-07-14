@@ -18,6 +18,7 @@ import {
   Archive,
   Upload,
   FileSpreadsheet,
+  FileText,
   MoreHorizontal,
   ChevronDown,
   Check,
@@ -59,6 +60,7 @@ export function Sidebar({ nodes, isLoading, error, onRefresh }: SidebarProps) {
   const collapseAll = useUIStore((s) => s.collapseAll)
   const createNote = useVaultStore((s) => s.createNote)
   const createFolder = useVaultStore((s) => s.createFolder)
+  const uploadPdf = useVaultStore((s) => s.uploadPdf)
   const moveNode = useVaultStore((s) => s.moveNode)
   const rootFolderId = useVaultStore((s) => s.rootFolderId)
   const vaults = useVaultStore((s) => s.vaults)
@@ -79,11 +81,13 @@ export function Sidebar({ nodes, isLoading, error, onRefresh }: SidebarProps) {
   // busy, which reads as if the wrong import is running.
   const [isImportingCsv, setIsImportingCsv] = useState(false)
   const [isImportingXlsx, setIsImportingXlsx] = useState(false)
+  const [isUploadingPdf, setIsUploadingPdf] = useState(false)
   const [isRootDropTarget, setIsRootDropTarget] = useState(false)
   const [isResizing, setIsResizing] = useState(false)
   const importInputRef = useRef<HTMLInputElement>(null)
   const csvImportInputRef = useRef<HTMLInputElement>(null)
   const xlsxImportInputRef = useRef<HTMLInputElement>(null)
+  const pdfUploadInputRef = useRef<HTMLInputElement>(null)
   const moreMenuRef = useRef<HTMLDivElement>(null)
   const vaultMenuRef = useRef<HTMLDivElement>(null)
   const resizeStartRef = useRef<{ startX: number; startWidth: number } | null>(null)
@@ -205,6 +209,11 @@ export function Sidebar({ nodes, isLoading, error, onRefresh }: SidebarProps) {
   function handleImportXlsxClick() {
     setMoreMenuOpen(false)
     xlsxImportInputRef.current?.click()
+  }
+
+  function handlePdfUploadClick() {
+    setMoreMenuOpen(false)
+    pdfUploadInputRef.current?.click()
   }
 
   function handleRefreshClick() {
@@ -334,6 +343,28 @@ export function Sidebar({ nodes, isLoading, error, onRefresh }: SidebarProps) {
       logError('sidebar.importXlsx', err)
     } finally {
       setIsImportingXlsx(false)
+    }
+  }
+
+  // Unlike the three imports above, this doesn't convert anything — the PDF
+  // is uploaded to Drive as-is and shows up as a real, clickable attachment
+  // row (FileTreeNode.tsx), opening in its own tab (PdfViewer.tsx).
+  async function handlePdfUploadFile(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+
+    setIsUploadingPdf(true)
+    try {
+      await toastPromise(() => uploadPdf(file), {
+        loading: `Uploading "${file.name}"…`,
+        success: `Uploaded "${file.name}"`,
+        error: (err) => toUserMessage(err, `Could not upload "${file.name}".`),
+      })
+    } catch (err) {
+      logError('sidebar.uploadPdf', err)
+    } finally {
+      setIsUploadingPdf(false)
     }
   }
 
@@ -537,6 +568,11 @@ export function Sidebar({ nodes, isLoading, error, onRefresh }: SidebarProps) {
                               {isBackingUp ? 'Zipping…' : 'Download vault backup (.zip)'}
                             </span>
                           </button>
+                          {/* Everything below brings content INTO the vault
+                              (convert-and-create, or a raw file upload) —
+                              grouped together and separated from the two
+                              vault-level utility actions above. */}
+                          <div className="my-1 h-px" style={{ background: 'var(--border)' }} aria-hidden="true" />
                           <button
                             type="button"
                             className="flex w-full items-center gap-2.5 rounded px-2.5 py-2 text-left text-sm hover:bg-[var(--bg-tertiary)] disabled:opacity-50"
@@ -585,6 +621,21 @@ export function Sidebar({ nodes, isLoading, error, onRefresh }: SidebarProps) {
                           <button
                             type="button"
                             className="flex w-full items-center gap-2.5 rounded px-2.5 py-2 text-left text-sm hover:bg-[var(--bg-tertiary)] disabled:opacity-50"
+                            onClick={handlePdfUploadClick}
+                            disabled={isUploadingPdf || !isOnline}
+                          >
+                            <FileText
+                              size={16}
+                              style={{ color: 'var(--text-muted)' }}
+                              className={isUploadingPdf ? 'animate-pulse' : undefined}
+                            />
+                            <span style={{ color: 'var(--text-primary)' }}>
+                              {isUploadingPdf ? 'Uploading…' : 'Upload PDF (.pdf)'}
+                            </span>
+                          </button>
+                          <button
+                            type="button"
+                            className="flex w-full items-center gap-2.5 rounded px-2.5 py-2 text-left text-sm hover:bg-[var(--bg-tertiary)] disabled:opacity-50"
                             onClick={() => {
                               setMoreMenuOpen(false)
                               setWebClipOpen(true)
@@ -618,6 +669,13 @@ export function Sidebar({ nodes, isLoading, error, onRefresh }: SidebarProps) {
                     accept=".xlsx,.xls"
                     className="hidden"
                     onChange={handleImportXlsxFile}
+                  />
+                  <input
+                    ref={pdfUploadInputRef}
+                    type="file"
+                    accept=".pdf"
+                    className="hidden"
+                    onChange={handlePdfUploadFile}
                   />
                 </div>
               </div>

@@ -47,6 +47,11 @@ interface VaultState {
   // wanting the blank starter template createNote always builds.
   createNoteWithContent: (name: string, content: string) => Promise<string>
   createFolder: (name: string) => Promise<void>
+  // Uploads a PDF as a real Drive attachment (no conversion, unlike
+  // createNoteWithContent's docx/csv/xlsx callers) — inserted straight into
+  // the tree the same reactive way, so it shows up in the sidebar (as a
+  // clickable PDF row, see FileTreeNode.tsx) immediately.
+  uploadPdf: (file: File) => Promise<string>
   // Renamed from moveNote — it was already fully generic (findNode/
   // removeNode/insertNode operate on any FileTreeNode, not specifically
   // files), and is now genuinely used for both notes and folders (folder-
@@ -545,6 +550,15 @@ export const useVaultStore = create<VaultState>()((set, get) => ({
       const newNode: FileTreeNode = { id: folder.id, name: folder.name, type: 'folder', children: [] }
       set({ fileTree: insertNode(fileTree, rootFolderId, rootFolderId, newNode) })
     }
+  },
+
+  uploadPdf: async (file) => {
+    const { fileTree, rootFolderId } = get()
+    if (!rootFolderId) throw new Error('Vault not loaded yet')
+    const uploaded = await driveService.uploadAttachment(rootFolderId, file.name, file)
+    const newNode: FileTreeNode = { id: uploaded.id, name: uploaded.name, type: 'attachment', mimeType: uploaded.mimeType }
+    set({ fileTree: insertNode(fileTree, rootFolderId, rootFolderId, newNode) })
+    return uploaded.id
   },
 
   moveNode: async (id, newParentId, oldParentId) => {

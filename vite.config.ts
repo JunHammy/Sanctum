@@ -86,7 +86,12 @@ export default defineConfig({
         // already (only fetched once a ```python block's Run button is
         // actually clicked), so forcing every install to precache the
         // whole Python runtime upfront would be exactly backwards.
-        globIgnores: ['**/plotly.min-*.js', 'pyodide/**'],
+        // react-pdf/pdfjs-dist (PdfViewer.tsx, lazy-loaded via
+        // routes/PdfRoute.tsx) is the same story — only fetched once an
+        // actual PDF tab is opened, most installs will never need it.
+        // Excludes its own bundle chunk (PdfViewer-*.js/.css) and the
+        // pdf.js worker script it loads at runtime (pdf.worker.min-*.mjs).
+        globIgnores: ['**/plotly.min-*.js', 'pyodide/**', '**/pdf.worker.min-*.mjs', '**/PdfViewer-*.{js,css}'],
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/,

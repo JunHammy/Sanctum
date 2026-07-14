@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ChevronRight, Pencil, Trash2 } from 'lucide-react'
+import { ChevronRight, FileText, Pencil, Trash2 } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useUIStore } from '../../stores/ui.store'
 import { useVaultStore } from '../../stores/vault.store'
@@ -47,7 +47,11 @@ export function FileTreeNode({ node, depth, parentId }: { node: FileTreeNodeType
   const isTouch = useIsTouchDevice()
   const { fileId: activeFileId } = useParams<{ fileId?: string }>()
 
-  if (node.type === 'attachment') return null // not shown in the main tree, MP §5.3
+  // Every attachment type except PDF stays fully invisible here (MP §5.3) —
+  // a PDF gets a real row and opens in its own tab (PdfViewer.tsx), same
+  // tab/window model as a note, everything else has no viewer built yet.
+  if (node.type === 'attachment' && node.mimeType !== 'application/pdf') return null
+  const isPdf = node.type === 'attachment'
 
   const displayName = node.type === 'file' ? node.name.replace(/\.md$/, '') : node.name
 
@@ -107,7 +111,7 @@ export function FileTreeNode({ node, depth, parentId }: { node: FileTreeNodeType
       </button>
       <PromptModal
         isOpen={renameOpen}
-        title={node.type === 'folder' ? 'Rename folder' : 'Rename note'}
+        title={node.type === 'folder' ? 'Rename folder' : isPdf ? 'Rename PDF' : 'Rename note'}
         placeholder={displayName}
         initialValue={displayName}
         submitLabel="Rename"
@@ -138,7 +142,7 @@ export function FileTreeNode({ node, depth, parentId }: { node: FileTreeNodeType
       </button>
       <ConfirmModal
         isOpen={confirmOpen}
-        title={node.type === 'folder' ? 'Delete folder' : 'Delete note'}
+        title={node.type === 'folder' ? 'Delete folder' : isPdf ? 'Delete PDF' : 'Delete note'}
         message={
           node.type === 'folder'
             ? `Delete "${displayName}" and everything inside it? This moves it to Google Drive's Trash, where it can be recovered.`
@@ -321,12 +325,15 @@ export function FileTreeNode({ node, depth, parentId }: { node: FileTreeNodeType
       <button
         type="button"
         draggable
-        className="min-w-0 flex-1 truncate py-1 text-left text-sm"
+        className="flex min-w-0 flex-1 items-center gap-1.5 truncate py-1 text-left text-sm"
         style={{
           paddingLeft: `${depth * 12 + 24}px`,
           color: isActive ? 'var(--accent-link)' : 'var(--text-secondary)',
         }}
         onDragStart={(e) => {
+          // A dragged PDF behaves exactly like a dragged note for reorder/
+          // move-into-folder purposes — same DragPayload shape, no new
+          // 'attachment' variant needed.
           const payload: DragPayload = { fileId: node.id, parentId, type: 'note' }
           setDraggedPayload(payload)
           e.dataTransfer.setData(DRAG_MIME, JSON.stringify(payload))
@@ -334,13 +341,14 @@ export function FileTreeNode({ node, depth, parentId }: { node: FileTreeNodeType
         }}
         onDragEnd={() => setDraggedPayload(null)}
         onClick={() => {
-          navigate(`/vault/note/${node.id}`)
+          navigate(isPdf ? `/vault/pdf/${node.id}` : `/vault/note/${node.id}`)
           // On mobile the sidebar overlays content, so get out of the way
           // once a note's picked; on desktop it stays open (own layout column).
           if (window.innerWidth < 1024) closeSidebar()
         }}
       >
-        {displayName}
+        {isPdf && <FileText size={13} className="shrink-0" />}
+        <span className="truncate">{displayName}</span>
       </button>
       {renameButton}
       {deleteButton}

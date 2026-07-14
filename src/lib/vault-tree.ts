@@ -1,8 +1,10 @@
 import type { FileTreeNode } from '../types/vault.types'
 
+// Matches notes and attachments (e.g. a PDF tab) — folders excluded, since
+// folders are never tabs and never need a display-name lookup by id.
 export function findFileName(nodes: FileTreeNode[], id: string): string | null {
   for (const node of nodes) {
-    if (node.type === 'file' && node.id === id) return node.name
+    if ((node.type === 'file' || node.type === 'attachment') && node.id === id) return node.name
     if (node.type === 'folder') {
       const found = findFileName(node.children, id)
       if (found) return found
@@ -38,7 +40,7 @@ export function collectFolderIds(nodes: FileTreeNode[]): string[] {
   return ids
 }
 
-function findNodeById(nodes: FileTreeNode[], id: string): FileTreeNode | null {
+export function findNodeById(nodes: FileTreeNode[], id: string): FileTreeNode | null {
   for (const node of nodes) {
     if (node.id === id) return node
     if (node.type === 'folder') {
@@ -49,13 +51,15 @@ function findNodeById(nodes: FileTreeNode[], id: string): FileTreeNode | null {
   return null
 }
 
-// Every note id within `node` — itself if it's a file, or every file
-// anywhere in its subtree if it's a folder (attachments excluded, they're
-// never tabs). Used when deleting a node to know which open tabs, if any,
-// need to close along with it — a folder delete can cascade to several
-// open tabs at once, not just the currently active one.
+// Every openable-as-a-tab id within `node` — itself if it's a file or
+// attachment (a PDF attachment is a real tab, same as a note; other
+// attachment types never generate one but including them here is a
+// harmless no-op), or every such id anywhere in its subtree if it's a
+// folder. Used when deleting a node to know which open tabs, if any, need
+// to close along with it — a folder delete can cascade to several open
+// tabs at once, not just the currently active one.
 export function collectFileIds(node: FileTreeNode): string[] {
-  if (node.type === 'file') return [node.id]
+  if (node.type === 'file' || node.type === 'attachment') return [node.id]
   if (node.type !== 'folder') return []
   return node.children.flatMap(collectFileIds)
 }
