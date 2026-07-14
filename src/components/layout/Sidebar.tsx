@@ -17,9 +17,12 @@ import {
   UnfoldVertical,
   Archive,
   Upload,
-  FileSpreadsheet,
   FileText,
+  Table2,
+  FileSpreadsheet,
   NotebookText,
+  Hash,
+  ScrollText,
   MoreHorizontal,
   ChevronDown,
   Check,
@@ -38,11 +41,13 @@ import { importDocx } from '../../services/docx-import.service'
 import { importCsv } from '../../services/csv-import.service'
 import { importXlsx } from '../../services/xlsx-import.service'
 import { importIpynb } from '../../services/ipynb-import.service'
+import { importMarkdown } from '../../services/markdown-import.service'
 import { FileTree } from '../sidebar/FileTree'
 import { TagBrowser } from '../sidebar/TagBrowser'
 import { LoadingSpinner } from '../common/LoadingSpinner'
 import { PromptModal } from '../common/PromptModal'
 import { WebClipModal } from '../common/WebClipModal'
+import { ImportModal, type ImportOption } from '../common/ImportModal'
 import type { FileTreeNode } from '../../types/vault.types'
 
 interface SidebarProps {
@@ -74,6 +79,7 @@ export function Sidebar({ nodes, isLoading, error, onRefresh }: SidebarProps) {
   const navigate = useNavigate()
   const [openModal, setOpenModal] = useState<'note' | 'folder' | null>(null)
   const [webClipOpen, setWebClipOpen] = useState(false)
+  const [importModalOpen, setImportModalOpen] = useState(false)
   const [moreMenuOpen, setMoreMenuOpen] = useState(false)
   const [vaultMenuOpen, setVaultMenuOpen] = useState(false)
   const [isBackingUp, setIsBackingUp] = useState(false)
@@ -84,6 +90,7 @@ export function Sidebar({ nodes, isLoading, error, onRefresh }: SidebarProps) {
   const [isImportingCsv, setIsImportingCsv] = useState(false)
   const [isImportingXlsx, setIsImportingXlsx] = useState(false)
   const [isImportingIpynb, setIsImportingIpynb] = useState(false)
+  const [isImportingMarkdown, setIsImportingMarkdown] = useState(false)
   const [isUploadingPdf, setIsUploadingPdf] = useState(false)
   const [isRootDropTarget, setIsRootDropTarget] = useState(false)
   const [isResizing, setIsResizing] = useState(false)
@@ -91,6 +98,7 @@ export function Sidebar({ nodes, isLoading, error, onRefresh }: SidebarProps) {
   const csvImportInputRef = useRef<HTMLInputElement>(null)
   const xlsxImportInputRef = useRef<HTMLInputElement>(null)
   const ipynbImportInputRef = useRef<HTMLInputElement>(null)
+  const markdownImportInputRef = useRef<HTMLInputElement>(null)
   const pdfUploadInputRef = useRef<HTMLInputElement>(null)
   const moreMenuRef = useRef<HTMLDivElement>(null)
   const vaultMenuRef = useRef<HTMLDivElement>(null)
@@ -218,6 +226,11 @@ export function Sidebar({ nodes, isLoading, error, onRefresh }: SidebarProps) {
   function handleImportIpynbClick() {
     setMoreMenuOpen(false)
     ipynbImportInputRef.current?.click()
+  }
+
+  function handleImportMarkdownClick() {
+    setMoreMenuOpen(false)
+    markdownImportInputRef.current?.click()
   }
 
   function handlePdfUploadClick() {
@@ -375,8 +388,33 @@ export function Sidebar({ nodes, isLoading, error, onRefresh }: SidebarProps) {
     }
   }
 
-  // Unlike the three imports above, this doesn't convert anything — the PDF
-  // is uploaded to Drive as-is and shows up as a real, clickable attachment
+  // Unlike ipynb/docx/csv/xlsx, there's no conversion here at all — a .md
+  // file already is Sanctum's own note format, this just uploads it as a
+  // new note directly. Reduces friction that existed for every *other*
+  // supported format having a one-click import except the one format that
+  // needs it least to actually get into the vault.
+  async function handleImportMarkdownFile(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+
+    const title = file.name.replace(/\.md$/i, '').trim() || 'Imported note'
+    setIsImportingMarkdown(true)
+    try {
+      await toastPromise(() => importMarkdown(file), {
+        loading: `Importing "${title}"…`,
+        success: `Imported "${title}"`,
+        error: (err) => toUserMessage(err, `Could not import "${title}".`),
+      })
+    } catch (err) {
+      logError('sidebar.importMarkdown', err)
+    } finally {
+      setIsImportingMarkdown(false)
+    }
+  }
+
+  // Unlike the imports above, this doesn't convert anything — the PDF is
+  // uploaded to Drive as-is and shows up as a real, clickable attachment
   // row (FileTreeNode.tsx), opening in its own tab (PdfViewer.tsx).
   async function handlePdfUploadFile(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -396,6 +434,71 @@ export function Sidebar({ nodes, isLoading, error, onRefresh }: SidebarProps) {
       setIsUploadingPdf(false)
     }
   }
+
+  // Built here (not hardcoded inside ImportModal) so that component stays
+  // generic — every actual handler/loading-state/icon still lives in this
+  // file. Labels are deliberately short ("Word Doc", not "Import Word
+  // document (.docx)") — the modal's own title already says "Import," and
+  // a grid card reads its icon + a short word, not a full sentence. The
+  // modal closes the instant a card is clicked (toastPromise inside each
+  // handler is what actually shows loading feedback), so `disabled` here
+  // is really just "don't let a re-open double-trigger the same import
+  // while it's still running," not something the user sits and watches.
+  const importOptions: ImportOption[] = [
+    {
+      key: 'docx',
+      label: 'Word Doc',
+      icon: <FileText size={22} style={{ color: 'var(--text-muted)' }} />,
+      onClick: handleImportClick,
+      disabled: isImporting || !isOnline,
+    },
+    {
+      key: 'csv',
+      label: 'CSV',
+      // Table2, not FileSpreadsheet — a bare grid glyph reads as "rows and
+      // columns of plain data," distinct from Excel's own file-branded icon
+      // right next to it, rather than the two formats sharing one icon.
+      icon: <Table2 size={22} style={{ color: 'var(--text-muted)' }} />,
+      onClick: handleImportCsvClick,
+      disabled: isImportingCsv || !isOnline,
+    },
+    {
+      key: 'xlsx',
+      label: 'Excel',
+      icon: <FileSpreadsheet size={22} style={{ color: 'var(--text-muted)' }} />,
+      onClick: handleImportXlsxClick,
+      disabled: isImportingXlsx || !isOnline,
+    },
+    {
+      key: 'ipynb',
+      label: 'Jupyter',
+      icon: <NotebookText size={22} style={{ color: 'var(--text-muted)' }} />,
+      onClick: handleImportIpynbClick,
+      disabled: isImportingIpynb || !isOnline,
+    },
+    {
+      key: 'markdown',
+      label: 'Markdown',
+      // Hash — markdown's own most recognizable syntax (# headings).
+      icon: <Hash size={22} style={{ color: 'var(--text-muted)' }} />,
+      onClick: handleImportMarkdownClick,
+      disabled: isImportingMarkdown || !isOnline,
+    },
+    {
+      key: 'pdf',
+      label: 'PDF',
+      icon: <ScrollText size={22} style={{ color: 'var(--text-muted)' }} />,
+      onClick: handlePdfUploadClick,
+      disabled: isUploadingPdf || !isOnline,
+    },
+    {
+      key: 'web',
+      label: 'Web Clip',
+      icon: <ClipboardPaste size={22} style={{ color: 'var(--text-muted)' }} />,
+      onClick: () => setWebClipOpen(true),
+      disabled: !isOnline,
+    },
+  ]
 
   return (
     <>
@@ -597,97 +700,25 @@ export function Sidebar({ nodes, isLoading, error, onRefresh }: SidebarProps) {
                               {isBackingUp ? 'Zipping…' : 'Download vault backup (.zip)'}
                             </span>
                           </button>
-                          {/* Everything below brings content INTO the vault
-                              (convert-and-create, or a raw file upload) —
-                              grouped together and separated from the two
-                              vault-level utility actions above. */}
+                          {/* Everything that brings content INTO the vault
+                              now lives behind one "Import…" entry point
+                              (ImportModal) instead of six separate rows
+                              here — that many side-by-side options read as
+                              a long, undifferentiated list once docx/CSV/
+                              Excel/Jupyter/Markdown/PDF/web-clip all
+                              accumulated. Still visually separated from the
+                              two vault-level utility actions above. */}
                           <div className="my-1 h-px" style={{ background: 'var(--border)' }} aria-hidden="true" />
                           <button
                             type="button"
-                            className="flex w-full items-center gap-2.5 rounded px-2.5 py-2 text-left text-sm hover:bg-[var(--bg-tertiary)] disabled:opacity-50"
-                            onClick={handleImportClick}
-                            disabled={isImporting || !isOnline}
-                          >
-                            <Upload
-                              size={16}
-                              style={{ color: 'var(--text-muted)' }}
-                              className={isImporting ? 'animate-pulse' : undefined}
-                            />
-                            <span style={{ color: 'var(--text-primary)' }}>
-                              {isImporting ? 'Importing…' : 'Import Word document (.docx)'}
-                            </span>
-                          </button>
-                          <button
-                            type="button"
-                            className="flex w-full items-center gap-2.5 rounded px-2.5 py-2 text-left text-sm hover:bg-[var(--bg-tertiary)] disabled:opacity-50"
-                            onClick={handleImportCsvClick}
-                            disabled={isImportingCsv || !isOnline}
-                          >
-                            <FileSpreadsheet
-                              size={16}
-                              style={{ color: 'var(--text-muted)' }}
-                              className={isImportingCsv ? 'animate-pulse' : undefined}
-                            />
-                            <span style={{ color: 'var(--text-primary)' }}>
-                              {isImportingCsv ? 'Importing…' : 'Import CSV (.csv)'}
-                            </span>
-                          </button>
-                          <button
-                            type="button"
-                            className="flex w-full items-center gap-2.5 rounded px-2.5 py-2 text-left text-sm hover:bg-[var(--bg-tertiary)] disabled:opacity-50"
-                            onClick={handleImportXlsxClick}
-                            disabled={isImportingXlsx || !isOnline}
-                          >
-                            <FileSpreadsheet
-                              size={16}
-                              style={{ color: 'var(--text-muted)' }}
-                              className={isImportingXlsx ? 'animate-pulse' : undefined}
-                            />
-                            <span style={{ color: 'var(--text-primary)' }}>
-                              {isImportingXlsx ? 'Importing…' : 'Import Excel (.xlsx)'}
-                            </span>
-                          </button>
-                          <button
-                            type="button"
-                            className="flex w-full items-center gap-2.5 rounded px-2.5 py-2 text-left text-sm hover:bg-[var(--bg-tertiary)] disabled:opacity-50"
-                            onClick={handleImportIpynbClick}
-                            disabled={isImportingIpynb || !isOnline}
-                          >
-                            <NotebookText
-                              size={16}
-                              style={{ color: 'var(--text-muted)' }}
-                              className={isImportingIpynb ? 'animate-pulse' : undefined}
-                            />
-                            <span style={{ color: 'var(--text-primary)' }}>
-                              {isImportingIpynb ? 'Importing…' : 'Import Jupyter Notebook (.ipynb)'}
-                            </span>
-                          </button>
-                          <button
-                            type="button"
-                            className="flex w-full items-center gap-2.5 rounded px-2.5 py-2 text-left text-sm hover:bg-[var(--bg-tertiary)] disabled:opacity-50"
-                            onClick={handlePdfUploadClick}
-                            disabled={isUploadingPdf || !isOnline}
-                          >
-                            <FileText
-                              size={16}
-                              style={{ color: 'var(--text-muted)' }}
-                              className={isUploadingPdf ? 'animate-pulse' : undefined}
-                            />
-                            <span style={{ color: 'var(--text-primary)' }}>
-                              {isUploadingPdf ? 'Importing…' : 'Import PDF (.pdf)'}
-                            </span>
-                          </button>
-                          <button
-                            type="button"
-                            className="flex w-full items-center gap-2.5 rounded px-2.5 py-2 text-left text-sm hover:bg-[var(--bg-tertiary)] disabled:opacity-50"
+                            className="flex w-full items-center gap-2.5 rounded px-2.5 py-2 text-left text-sm hover:bg-[var(--bg-tertiary)]"
                             onClick={() => {
                               setMoreMenuOpen(false)
-                              setWebClipOpen(true)
+                              setImportModalOpen(true)
                             }}
-                            disabled={!isOnline}
                           >
-                            <ClipboardPaste size={16} style={{ color: 'var(--text-muted)' }} />
-                            <span style={{ color: 'var(--text-primary)' }}>Import from the web</span>
+                            <Upload size={16} style={{ color: 'var(--text-muted)' }} />
+                            <span style={{ color: 'var(--text-primary)' }}>Import…</span>
                           </button>
                         </motion.div>
                       )}
@@ -720,6 +751,13 @@ export function Sidebar({ nodes, isLoading, error, onRefresh }: SidebarProps) {
                     accept=".ipynb"
                     className="hidden"
                     onChange={handleImportIpynbFile}
+                  />
+                  <input
+                    ref={markdownImportInputRef}
+                    type="file"
+                    accept=".md"
+                    className="hidden"
+                    onChange={handleImportMarkdownFile}
                   />
                   <input
                     ref={pdfUploadInputRef}
@@ -767,6 +805,7 @@ export function Sidebar({ nodes, isLoading, error, onRefresh }: SidebarProps) {
         onClose={() => setOpenModal(null)}
       />
       <WebClipModal isOpen={webClipOpen} onClose={() => setWebClipOpen(false)} />
+      <ImportModal isOpen={importModalOpen} onClose={() => setImportModalOpen(false)} options={importOptions} />
     </>
   )
 }
