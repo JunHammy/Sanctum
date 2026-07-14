@@ -232,7 +232,16 @@ export function Header({ onOpenSearch, onOpenCommandPalette }: HeaderProps) {
         )}
         {activeNoteId && (
           <>
-            <span className="hidden text-xs sm:inline" style={{ color: 'var(--text-muted)' }}>
+            {/* min-w sized to the longest of the four possible strings
+                ("Unsaved changes") and right-aligned — without this, the
+                icon buttons that follow visibly shift left/right every time
+                this text changes length (e.g. "Saving…" <-> "Saved"), which
+                reads as a layout glitch since it happens on essentially
+                every keystroke/save cycle. */}
+            <span
+              className="hidden min-w-[6.5rem] text-right text-xs sm:inline"
+              style={{ color: 'var(--text-muted)' }}
+            >
               {/* isDirty takes priority over the offline pill above: a
                   pending edit should keep reading "Unsaved changes" so it's
                   clear something is still waiting to sync, not just that the
