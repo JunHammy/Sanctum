@@ -4,6 +4,7 @@ import { tooltips } from '@codemirror/view'
 import type { Extension } from '@codemirror/state'
 import { markdown } from '@codemirror/lang-markdown'
 import { python } from '@codemirror/lang-python'
+import { javascript } from '@codemirror/lang-javascript'
 import { indentUnit } from '@codemirror/language'
 import { oneDark } from '@codemirror/theme-one-dark'
 import { livePreviewExtension } from '../../lib/codemirror/live-preview'
@@ -21,18 +22,18 @@ interface MarkdownEditorProps {
   // Run panel) inside one shared bordered container, so there isn't a
   // visible double border/gap at the seam between the two.
   bare?: boolean
-  // 'python' swaps markdown syntax mode for real python syntax highlighting
-  // (keywords, strings, etc. — matching what Read mode's highlight.js
-  // already shows, instead of plain unstyled text) and drops every
-  // markdown-specific extension below (slash commands, wikilink
+  // 'python'/'javascript' swap markdown syntax mode for real syntax
+  // highlighting (keywords, strings, etc. — matching what Read mode's
+  // highlight.js already shows, instead of plain unstyled text) and drop
+  // every markdown-specific extension below (slash commands, wikilink
   // autocomplete, image paste, live-preview decorations) — none of those
-  // make sense once this buffer holds nothing but raw python source, and
-  // leaving them active risked real misfires (typing `/` for division
-  // opening the slash-command menu, `[[` in a dict/list literal opening the
-  // wikilink dropdown). Only used by Block.tsx for a python block's
-  // isolated code buffer (see its own `parsedPython`) — every other caller
-  // keeps the default markdown mode.
-  language?: 'markdown' | 'python'
+  // make sense once this buffer holds nothing but raw code, and leaving
+  // them active risked real misfires (typing `/` for division opening the
+  // slash-command menu, `[[` in a dict/list/array literal opening the
+  // wikilink dropdown). Only used by Block.tsx for a runnable code block's
+  // isolated code buffer (see its own `parsedPython`/`parsedJavaScript`) —
+  // every other caller keeps the default markdown mode.
+  language?: 'markdown' | 'python' | 'javascript'
 }
 
 // Uncontrolled by design: CodeMirror owns its own text state internally,
@@ -54,7 +55,9 @@ export function MarkdownEditor({ value, onChange, bare, language = 'markdown' }:
     const languageExtensions: Extension[] =
       language === 'python'
         ? [python(), indentUnit.of('    ')] // PEP8 (4 spaces) — CodeMirror's own default is 2
-        : [markdown(), livePreviewExtension, customSyntaxExtension, slashCommandsExtension, wikilinkAutocompleteExtension, imageUploadExtension]
+        : language === 'javascript'
+          ? [javascript()] // CodeMirror's own default indentUnit (2 spaces) already matches common JS style, no override needed
+          : [markdown(), livePreviewExtension, customSyntaxExtension, slashCommandsExtension, wikilinkAutocompleteExtension, imageUploadExtension]
 
     const view = new EditorView({
       doc: value,

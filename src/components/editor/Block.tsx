@@ -12,11 +12,12 @@ import { useNoteStore } from '../../stores/note.store'
 import { renderBody } from '../../services/markdown.service'
 import { parseTable } from '../../lib/table-syntax'
 import { parseMathBlock } from '../../lib/math-syntax'
-import { parsePythonBlock, parsePersistedOutput, serializePythonBlock, type PersistedPythonOutput } from '../../lib/python/python-syntax'
+import { parsePythonBlock, parsePersistedOutput, serializePythonBlock } from '../../lib/python/python-syntax'
+import { parseJavaScriptBlock, parseJsPersistedOutput, serializeJavaScriptBlock } from '../../lib/javascript/javascript-syntax'
 import { MarkdownEditor } from './MarkdownEditor'
 import { TableGridEditor } from './TableGridEditor'
 import { MathBlockEditor } from './MathBlockEditor'
-import { PythonCodeBlock } from './PythonCodeBlock'
+import { CodeBlock, type PersistedCodeOutput } from './CodeBlock'
 import { Modal } from '../common/Modal'
 import type { Block as BlockType } from '../../lib/blocks/split-blocks'
 
@@ -135,15 +136,15 @@ export const Block = memo(function Block({
   // "not a math block."
   const parsedMath = parseMathBlock(block.rawText)
   const isMath = !forceRawMode && parsedMath !== null
-  // Unlike table/math, python never swaps out the text editor — the code
-  // itself is still genuinely worth hand-editing as raw text. This just
-  // decides whether to *also* show a live Run button + output panel
-  // alongside it, in both active and inactive rendering (below), so running
-  // code doesn't require deactivating the block first (confirmed via
-  // testing: requiring that extra step read as "there's no Run button"
+  // Unlike table/math, python/javascript never swap out the text editor —
+  // the code itself is still genuinely worth hand-editing as raw text.
+  // This just decides whether to *also* show a live Run button + output
+  // panel alongside it, in both active and inactive rendering (below), so
+  // running code doesn't require deactivating the block first (confirmed
+  // via testing: requiring that extra step read as "there's no Run button"
   // since nothing indicated one existed until you clicked away). Rendered
   // as a direct sibling here rather than via a portal into the raw HTML's
-  // own `.python-run-controls` placeholder (which plugin-python.ts still
+  // own `.code-run-controls` placeholder (which plugin-code-blocks.ts still
   // emits, unused here) — confirmed via testing that portaling a live React
   // component into a node living inside this same element's
   // dangerouslySetInnerHTML subtree caused the whole subtree to get
@@ -152,22 +153,28 @@ export const Block = memo(function Block({
   // html content each time — ruled out via direct comparison) — an
   // infinite loop reproduced here specifically after an activate/deactivate
   // cycle. MarkdownReader hit the same wall for its own whole-document
-  // rendering and fixed it the same way — see split-python-segments.ts.
+  // rendering and fixed it the same way — see split-code-segments.ts.
   const parsedPython = parsePythonBlock(block.rawText)
   // The block's last-saved run result, if any — parsed straight from its
   // own rawText (the ```python-output fence split-blocks.ts merges onto
-  // the same Block as its code fence). Handed to PythonCodeBlock as its
+  // the same Block as its code fence). Handed to CodeBlock as its
   // starting point so a note doesn't come up blank before anything's been
   // (re-)run this session.
   const parsedOutput = parsePersistedOutput(block.rawText)
+  // JavaScript's own counterpart — a block is never both at once (the fence
+  // language decides which, and split-blocks.ts only ever merges a
+  // ```javascript-output onto a matching ```javascript fence), so exactly
+  // one of parsedPython/parsedJavaScript is non-null for any runnable block.
+  const parsedJavaScript = parseJavaScriptBlock(block.rawText)
+  const parsedJsOutput = parseJsPersistedOutput(block.rawText)
 
   // Writes a completed run's result back into this block's own rawText —
   // rides the same onChange → BlockEditor.handleBlockChange → note.store
   // pipeline any other edit to this block already goes through, so
   // persisted output picks up autosave/undo for free.
-  function handlePersistOutput(output: PersistedPythonOutput) {
-    if (parsedPython === null) return
-    onChange(block.id, serializePythonBlock(parsedPython, output))
+  function handlePersistOutput(output: PersistedCodeOutput) {
+    if (parsedPython !== null) onChange(block.id, serializePythonBlock(parsedPython, output))
+    else if (parsedJavaScript !== null) onChange(block.id, serializeJavaScriptBlock(parsedJavaScript, output))
   }
 
   // Expanding always lands you in the editable grid/equation, even from
@@ -282,7 +289,7 @@ export const Block = memo(function Block({
               <MathBlockEditor id={block.id} value={block.rawText} onChange={onChange} />
             ) : parsedPython !== null ? (
               // One shared bordered box for the whole "cell" (code + Run/
-              // output), not two stacked boxes — see PythonCodeBlock's own
+              // output), not two stacked boxes — see CodeBlock's own
               // comment for why it has no border of its own. `bare` on
               // MarkdownEditor for the same reason. Fed just the code, not
               // the block's full rawText — CodeMirror is uncontrolled (see
@@ -307,11 +314,35 @@ export const Block = memo(function Block({
                   onChange={(text) => onChange(block.id, serializePythonBlock(text, parsedOutput))}
                 />
                 {activeNoteId && (
-                  <PythonCodeBlock
+                  <CodeBlock
+                    language="python"
                     noteId={activeNoteId}
                     blockKey={block.id}
                     code={parsedPython}
                     initialOutput={parsedOutput}
+                    onPersist={handlePersistOutput}
+                  />
+                )}
+              </div>
+            ) : parsedJavaScript !== null ? (
+              // Same shape as the python branch above, just javascript's
+              // own fence/output pair — see that branch's comment for why
+              // MarkdownEditor is fed just the code, not the block's full
+              // rawText.
+              <div className="overflow-hidden rounded-md border" style={{ borderColor: 'var(--border)' }}>
+                <MarkdownEditor
+                  bare
+                  language="javascript"
+                  value={parsedJavaScript}
+                  onChange={(text) => onChange(block.id, serializeJavaScriptBlock(text, parsedJsOutput))}
+                />
+                {activeNoteId && (
+                  <CodeBlock
+                    language="javascript"
+                    noteId={activeNoteId}
+                    blockKey={block.id}
+                    code={parsedJavaScript}
+                    initialOutput={parsedJsOutput}
                     onPersist={handlePersistOutput}
                   />
                 )}
@@ -392,11 +423,32 @@ export const Block = memo(function Block({
                   dangerouslySetInnerHTML={{ __html: html }}
                 />
                 {activeNoteId && (
-                  <PythonCodeBlock
+                  <CodeBlock
+                    language="python"
                     noteId={activeNoteId}
                     blockKey={block.id}
                     code={parsedPython}
                     initialOutput={parsedOutput}
+                    onPersist={handlePersistOutput}
+                  />
+                )}
+              </div>
+            ) : parsedJavaScript !== null ? (
+              // Same shape as the python branch above.
+              <div className="javascript-cell-wrapper overflow-hidden rounded-md border" style={{ borderColor: 'var(--border)' }}>
+                <div
+                  ref={containerRef}
+                  className="markdown-body cursor-text px-1 py-0.5 hover:bg-[var(--bg-tertiary)]"
+                  onClick={() => onActivate(block.id)}
+                  dangerouslySetInnerHTML={{ __html: html }}
+                />
+                {activeNoteId && (
+                  <CodeBlock
+                    language="javascript"
+                    noteId={activeNoteId}
+                    blockKey={block.id}
+                    code={parsedJavaScript}
+                    initialOutput={parsedJsOutput}
                     onPersist={handlePersistOutput}
                   />
                 )}

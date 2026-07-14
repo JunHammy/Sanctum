@@ -5,7 +5,7 @@
 // an accidental infinite loop. See python-kernel.store.ts for how this
 // gets instantiated (`new Worker(new URL(...), { type: 'module' })`).
 import { loadPyodide, type PyodideInterface } from 'pyodide'
-import type { WorkerRequest, WorkerResponse } from './python-worker-protocol'
+import type { WorkerRequest, WorkerResponse } from '../code-worker-protocol'
 
 function post(message: WorkerResponse) {
   self.postMessage(message)

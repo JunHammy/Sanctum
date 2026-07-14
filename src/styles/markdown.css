@@ -170,6 +170,27 @@
   border-radius: 0;
 }
 
+/* JavaScript's own counterpart to the three .python-block rules above —
+   same shapes, kept as separate rules rather than a shared selector so a
+   future language-specific visual tweak to one doesn't have to touch the
+   other (see plugin-code-blocks.ts's own comment on why the block classes
+   themselves stay per-language rather than one generic class). */
+.javascript-block {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.javascript-block pre {
+  border-radius: 0;
+  margin: 0;
+}
+
+.javascript-cell-wrapper .javascript-block {
+  border: none;
+  border-radius: 0;
+}
+
 .markdown-body ul,
 .markdown-body ol {
   padding-left: 1.5em;

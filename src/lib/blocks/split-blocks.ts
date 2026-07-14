@@ -1,5 +1,5 @@
 import MarkdownIt from 'markdown-it'
-import { PYTHON_LANG, PYTHON_OUTPUT_LANG } from '../python/python-syntax'
+import { RUNNABLE_LANGUAGES } from '../runnable-languages'
 
 // Splits raw markdown into top-level block chunks using markdown-it's own
 // tokenizer (no custom plugin chain needed — plugins like wikilink/callout
@@ -38,26 +38,32 @@ export function splitIntoBlocks(markdown: string): Block[] {
     }
 
     if (token.map) {
-      // A ```python fence immediately followed (no blank line) by a
-      // ```python-output fence is one atomic block, not two — same "merge
-      // related adjacent tokens into one block" technique already used
-      // below for a whole GFM table (which merges via a single container's
-      // own .map instead, a different token shape but the same idea).
-      // Without this, dragging/reordering/deleting a block could separate a
-      // code block from the very output it produced. See
-      // python-syntax.ts's serializePythonBlock for the writer side of this
-      // same adjacency convention.
+      // A ```python (or ```javascript) fence immediately followed (no
+      // blank line) by its matching ```python-output/```javascript-output
+      // fence is one atomic block, not two — same "merge related adjacent
+      // tokens into one block" technique already used below for a whole
+      // GFM table (which merges via a single container's own .map instead,
+      // a different token shape but the same idea). Without this,
+      // dragging/reordering/deleting a block could separate a code block
+      // from the very output it produced. See runnable-languages.ts for
+      // the shared list of language pairs this checks against, and
+      // python-syntax.ts's/javascript-syntax.ts's own serializeXBlock for
+      // the writer side of this same adjacency convention.
       const next = tokens[i + 1]
-      const isPythonFence = token.type === 'fence' && token.info.trim().toLowerCase() === PYTHON_LANG
+      const isRunnableFence =
+        token.type === 'fence' && RUNNABLE_LANGUAGES.some((l) => l.lang === token.info.trim().toLowerCase())
       const nextIsAdjacentOutput =
+        isRunnableFence &&
         next !== undefined &&
         next.level === 0 &&
         next.type === 'fence' &&
-        next.info.trim().toLowerCase() === PYTHON_OUTPUT_LANG &&
         next.map !== null &&
-        next.map[0] === token.map[1]
+        next.map[0] === token.map[1] &&
+        RUNNABLE_LANGUAGES.some(
+          (l) => l.lang === token.info.trim().toLowerCase() && l.outputLang === next.info.trim().toLowerCase(),
+        )
 
-      if (isPythonFence && nextIsAdjacentOutput && next.map) {
+      if (isRunnableFence && nextIsAdjacentOutput && next.map) {
         const [startLine] = token.map
         const [, endLine] = next.map
         const rawText = lines.slice(startLine, endLine).join('\n')

@@ -7,7 +7,7 @@ import { resolveImagesIn } from './useImageResolution'
 import { useVaultStore } from '../stores/vault.store'
 import type { FileTreeNode } from '../types/vault.types'
 import { renderStaticPythonOutput } from '../lib/python/render-static-output'
-import type { PersistedPythonOutput } from '../lib/python/python-syntax'
+import type { PersistedCodeOutput } from '../components/editor/CodeBlock'
 
 function escapeHtml(text: string): string {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
@@ -92,28 +92,31 @@ async function resolveOnePlaceholder(el: HTMLElement, fileTree: FileTreeNode[]):
       // still one click away, just not auto-expanded.
       const safeSection = section.replace(/!\[\[/g, '[[')
       body.innerHTML = renderBody(safeSection)
-      // A transcluded ```python block's own .python-run-controls slot
-      // (plugin-python.ts) is otherwise never filled in here — Block.tsx/
-      // MarkdownReader wire a live <PythonCodeBlock> into their own
-      // top-level python blocks, but this content lives inside a raw
+      // A transcluded runnable code block's own .code-run-controls slot
+      // (plugin-code-blocks.ts) is otherwise never filled in here —
+      // Block.tsx/MarkdownReader wire a live <CodeBlock> into their own
+      // top-level code blocks, but this content lives inside a raw
       // innerHTML mutation with no React tree to hand a component off to.
       // Filling it with a static, read-only render of the persisted output
       // (if any) is the same read-only treatment tables/math already get
       // when transcluded, without needing a portal into this subtree —
-      // see PythonCodeBlock's own comment for why that's specifically the
-      // pattern to avoid.
-      body.querySelectorAll<HTMLElement>('.python-block').forEach((block) => {
-        const controls = block.querySelector<HTMLElement>('.python-run-controls')
+      // see CodeBlock's own comment for why that's specifically the
+      // pattern to avoid. renderStaticPythonOutput is language-agnostic
+      // despite the name (just renders stdout/stderr/error/images, whatever
+      // produced them) — reused as-is for javascript blocks too rather than
+      // adding an identical javascript-named copy.
+      body.querySelectorAll<HTMLElement>('[data-runnable-lang]').forEach((block) => {
+        const controls = block.querySelector<HTMLElement>('.code-run-controls')
         if (!controls || !block.dataset.output) return
         try {
-          const output = JSON.parse(decodeURIComponent(block.dataset.output)) as PersistedPythonOutput
+          const output = JSON.parse(decodeURIComponent(block.dataset.output)) as PersistedCodeOutput
           controls.innerHTML = renderStaticPythonOutput(output)
         } catch {
           // Malformed persisted JSON — leave the slot empty, same as a
           // block that was never run.
         }
       })
-      // Cached *after* the python post-processing above, so a cache hit
+      // Cached *after* the code-block post-processing above, so a cache hit
       // (a remount of this same placeholder) redisplays the static output
       // too, not just the code.
       resolvedCache.set(key, body.innerHTML)

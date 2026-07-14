@@ -1,6 +1,6 @@
-// Shared fence-language literals — split-blocks.ts (merging) and
-// plugin-python.ts (rendering) both need to recognize the exact same two
-// strings; exporting them from here means there's exactly one place that
+// Fence-language literals — re-exported by runnable-languages.ts (the
+// shared table split-blocks.ts's merging and plugin-code-blocks.ts's
+// rendering both key off of) so there's exactly one place either string
 // could typo/drift, not three.
 export const PYTHON_LANG = 'python'
 export const PYTHON_OUTPUT_LANG = 'python-output'

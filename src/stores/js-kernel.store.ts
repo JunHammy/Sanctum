@@ -1,13 +1,17 @@
 import { create } from 'zustand'
 import type { WorkerRequest, WorkerResponse } from '../lib/code-worker-protocol'
 
-export interface PythonBlockOutput {
+// Deliberately mirrors python-kernel.store.ts's shape exactly (down to the
+// unused `loadingPackage`/`'loading-package'` status, which js.worker.ts
+// never actually sends) rather than sharing a generalized store factory —
+// python-kernel.store.ts is the most heavily-tested code in the app; a
+// bug introduced while generalizing it would be expensive to catch. Kept
+// structurally identical anyway so CodeBlock.tsx can render either
+// store's output through one shared code path with no per-language type
+// branching. See js.worker.ts for why JS runs don't persist state across
+// runs the way Python's reused interpreter naturally does.
+export interface JsBlockOutput {
   status: 'idle' | 'running' | 'loading-package' | 'success' | 'error'
-  // The [N] counter shown next to a block's output — assigned when a run
-  // starts, incrementing across the whole note (not per-block), same
-  // "which order did things actually happen in" convention Jupyter itself
-  // uses. Persists (doesn't reset) after the run finishes, so `null` here
-  // specifically means "never run this session," not "currently idle."
   execNumber: number | null
   stdout: string
   stderr: string
@@ -22,33 +26,19 @@ interface NoteKernel {
   initError: string | null
   nextExecId: number
   nextExecNumber: number
-  // Routes an incoming worker message (which only knows its own execId)
-  // back to the block that requested it.
   execIdToBlockKey: Map<number, string>
-  // A run requested before the worker finished loading Pyodide (the common
-  // case for literally the first Run click in a note) waits here and
-  // flushes once 'ready' arrives, rather than being dropped.
   pendingRuns: Array<{ blockKey: string; code: string }>
-  outputs: Record<string, PythonBlockOutput>
+  outputs: Record<string, JsBlockOutput>
 }
 
-interface PythonKernelState {
+interface JsKernelState {
   kernels: Record<string, NoteKernel>
   runBlock: (noteId: string, blockKey: string, code: string) => void
-  // Terminates the note's worker and creates a fresh one — restart means
-  // "start over," not "reset in place." Pyodide has no supported API for
-  // clearing a single running instance's interpreter state, so a genuinely
-  // fresh Worker (and therefore a fresh Python interpreter) is the only
-  // reliable way to actually clear accumulated state.
   restartKernel: (noteId: string) => void
-  // Called when a note's tab is actually closed (see TabBar.tsx) — frees
-  // the worker's memory. Deliberately *not* called on merely navigating
-  // away from a note while its tab stays open, so switching back doesn't
-  // lose accumulated state.
   closeKernel: (noteId: string) => void
 }
 
-const EMPTY_OUTPUT: PythonBlockOutput = {
+const EMPTY_OUTPUT: JsBlockOutput = {
   status: 'idle',
   execNumber: null,
   stdout: '',
@@ -59,27 +49,18 @@ const EMPTY_OUTPUT: PythonBlockOutput = {
 }
 
 function createWorker(): Worker {
-  return new Worker(new URL('../lib/python/pyodide.worker.ts', import.meta.url), { type: 'module' })
+  return new Worker(new URL('../lib/javascript/js.worker.ts', import.meta.url), { type: 'module' })
 }
 
 function send(worker: Worker, message: WorkerRequest) {
   worker.postMessage(message)
 }
 
-export const usePythonKernelStore = create<PythonKernelState>()((set, get) => {
-  // Wires a freshly-created worker's onmessage handler — pulled out of
-  // runBlock/restartKernel (both create a worker) so the routing logic
-  // exists in exactly one place.
+export const useJsKernelStore = create<JsKernelState>()((set, get) => {
   function attachWorker(noteId: string, worker: Worker) {
     worker.onmessage = (e: MessageEvent<WorkerResponse>) => {
       const msg = e.data
 
-      // Handled outside the main set() below, not as one of its branches —
-      // dispatchRun makes its own set() call per pending run, and calling
-      // set() from *within* another set()'s updater function would operate
-      // on state from before this same update committed. Committing
-      // 'ready' first, then flushing pending runs as separate, sequential
-      // set() calls afterward, avoids that entirely.
       if (msg.type === 'ready') {
         const pending = get().kernels[noteId]?.pendingRuns ?? []
         set((state) => {
@@ -102,7 +83,7 @@ export const usePythonKernelStore = create<PythonKernelState>()((set, get) => {
         const blockKey = kernel.execIdToBlockKey.get(msg.execId)
         if (!blockKey) return state
         const current = kernel.outputs[blockKey] ?? EMPTY_OUTPUT
-        let next: PythonBlockOutput = current
+        let next: JsBlockOutput = current
 
         if (msg.type === 'loading-package') {
           next = { ...current, status: 'loading-package', loadingPackage: msg.packageName }
@@ -126,8 +107,6 @@ export const usePythonKernelStore = create<PythonKernelState>()((set, get) => {
     }
   }
 
-  // Assumes the kernel is already 'ready' — runBlock is what handles the
-  // not-ready/needs-queueing case before ever calling this.
   function dispatchRun(noteId: string, blockKey: string, code: string) {
     set((state) => {
       const kernel = state.kernels[noteId]
@@ -191,7 +170,7 @@ export const usePythonKernelStore = create<PythonKernelState>()((set, get) => {
         }))
         return
       }
-      if (existing.status === 'init-error') return // nothing sensible to run against a kernel that never started
+      if (existing.status === 'init-error') return
       dispatchRun(noteId, blockKey, code)
     },
 

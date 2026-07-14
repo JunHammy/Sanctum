@@ -1,7 +1,11 @@
-// Message shapes shared between the main thread (python-kernel.store.ts)
-// and pyodide.worker.ts — kept in their own file (not colocated in the
-// worker itself) so the main-thread side can import the types without
-// pulling any worker-only code into the main bundle.
+// Message shapes shared between a kernel store (python-kernel.store.ts,
+// js-kernel.store.ts) and its own Web Worker (pyodide.worker.ts,
+// js.worker.ts) — kept in their own file (not colocated in either worker)
+// so the main-thread side can import the types without pulling any
+// worker-only code into the main bundle. Genuinely language-agnostic: both
+// languages' workers use the exact same message shapes, including
+// `loading-package` and `images`, even though only Python's worker ever
+// actually sends them — the JS worker simply never emits those two.
 
 export interface RunRequest {
   type: 'run'
@@ -53,7 +57,9 @@ export interface ResultMessage {
   execId: number
   // base64 PNG data URLs — see pyodide.worker.ts's matplotlib capture
   // epilogue for why these come back as a batch after the run finishes,
-  // not streamed incrementally like stdout.
+  // not streamed incrementally like stdout. js.worker.ts has no equivalent
+  // capture mechanism (no document/canvas inside a Worker) and always
+  // sends an empty array here.
   images: string[]
 }
 

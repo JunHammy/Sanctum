@@ -13,9 +13,10 @@ import { useMediaEmbeds } from '../../hooks/useMediaEmbeds'
 import { useDragScrollTables } from '../../hooks/useDragScrollTables'
 import { useTableExpand } from '../../hooks/useTableExpand'
 import { useTableMinWidth } from '../../hooks/useTableMinWidth'
-import { splitAroundPythonBlocks } from '../../lib/python/split-python-segments'
-import { serializePythonBlock, type PersistedPythonOutput } from '../../lib/python/python-syntax'
-import { PythonCodeBlock } from './PythonCodeBlock'
+import { splitAroundCodeBlocks } from '../../lib/split-code-segments'
+import { serializePythonBlock } from '../../lib/python/python-syntax'
+import { serializeJavaScriptBlock } from '../../lib/javascript/javascript-syntax'
+import { CodeBlock, type PersistedCodeOutput } from './CodeBlock'
 import { Modal } from '../common/Modal'
 import { scrollToLineWithFlash, consumePendingScrollAnchor } from '../../lib/scroll-to-line'
 
@@ -71,9 +72,9 @@ export function MarkdownReader({ html, currentFileId }: MarkdownReaderProps) {
 
   // Recomputed only when the rendered HTML actually changes, not on every
   // render (this parses the whole string into a detached DOM tree — see
-  // split-python-segments.ts for why this exists instead of the portal this
+  // split-code-segments.ts for why this exists instead of the portal this
   // app used before).
-  const segments = useMemo(() => splitAroundPythonBlocks(html), [html])
+  const segments = useMemo(() => splitAroundCodeBlocks(html), [html])
 
   // Splices a completed run's result directly into the note's own rawBody
   // at a block's line range, then saves through the normal updateContent
@@ -83,11 +84,18 @@ export function MarkdownReader({ html, currentFileId }: MarkdownReaderProps) {
   // extracted content), the same content markdown-it tokenized to produce
   // data-src-line/data-src-line-end in the first place — so these line
   // numbers index directly into it with no offset adjustment.
-  function persistOutput(code: string, startLine: number | null, endLine: number | null, output: PersistedPythonOutput) {
+  function persistOutput(
+    language: 'python' | 'javascript',
+    code: string,
+    startLine: number | null,
+    endLine: number | null,
+    output: PersistedCodeOutput,
+  ) {
     if (startLine === null || endLine === null || Number.isNaN(startLine) || Number.isNaN(endLine)) return
     const { rawBody, updateContent } = useNoteStore.getState()
     const lines = rawBody.split('\n')
-    const nextLines = [...lines.slice(0, startLine), serializePythonBlock(code, output), ...lines.slice(endLine)]
+    const serialized = language === 'python' ? serializePythonBlock(code, output) : serializeJavaScriptBlock(code, output)
+    const nextLines = [...lines.slice(0, startLine), serialized, ...lines.slice(endLine)]
     updateContent(nextLines.join('\n'))
   }
 
@@ -188,15 +196,20 @@ export function MarkdownReader({ html, currentFileId }: MarkdownReaderProps) {
           segment.type === 'html' ? (
             <div key={i} dangerouslySetInnerHTML={{ __html: segment.html }} />
           ) : (
-            <div key={i} className="python-cell-wrapper overflow-hidden rounded-md border" style={{ borderColor: 'var(--border)' }}>
+            <div
+              key={i}
+              className={`${segment.language}-cell-wrapper overflow-hidden rounded-md border`}
+              style={{ borderColor: 'var(--border)' }}
+            >
               <div dangerouslySetInnerHTML={{ __html: segment.codeHtml }} />
               {activeNoteId && (
-                <PythonCodeBlock
+                <CodeBlock
+                  language={segment.language}
                   noteId={activeNoteId}
                   blockKey={segment.key}
                   code={segment.code}
                   initialOutput={segment.initialOutput}
-                  onPersist={(output) => persistOutput(segment.code, segment.startLine, segment.endLine, output)}
+                  onPersist={(output) => persistOutput(segment.language, segment.code, segment.startLine, segment.endLine, output)}
                 />
               )}
             </div>
