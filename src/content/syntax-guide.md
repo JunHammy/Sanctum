@@ -116,6 +116,66 @@ function greet(name: string): string {
 }
 ```
 
+## Runnable code
+
+```python and ```javascript fenced blocks are special — each gets a **Run** button and actually executes right in the browser (Python via Pyodide/WebAssembly, JavaScript natively), no server involved:
+
+````markdown
+```python
+print("hello from Sanctum")
+for i in range(3):
+    print(i * i)
+```
+````
+
+Just write the code — the output you'll see below it appears automatically once you click Run, it isn't something you type by hand. Try it:
+
+```python
+print("hello from Sanctum")
+for i in range(3):
+    print(i * i)
+```
+```python-output
+{
+  "execNumber": 1,
+  "stdout": "hello from Sanctum\n0\n1\n4\n",
+  "stderr": "",
+  "images": [],
+  "errorMessage": null
+}
+```
+
+JavaScript works exactly the same way — try this one too:
+
+````markdown
+```javascript
+console.log("hello from Sanctum");
+for (let i = 0; i < 3; i++) {
+  console.log(i * i);
+}
+```
+````
+
+```javascript
+console.log("hello from Sanctum");
+for (let i = 0; i < 3; i++) {
+  console.log(i * i);
+}
+```
+```javascript-output
+{
+  "execNumber": 1,
+  "stdout": "hello from Sanctum\n0\n1\n4\n",
+  "stderr": "",
+  "images": [],
+  "errorMessage": null
+}
+```
+
+A first Python run starts a real WASM runtime (~5–10s, one-time per note) — JavaScript has no such delay, since it runs natively. The icon next to Run restarts the kernel, clearing all state for that note. One real difference between the two: Python keeps a variable defined in one cell available to the next (a genuine, reused interpreter, same as a real notebook), while JavaScript gives every run a completely fresh scope — which is also what makes real top-level `await` work cleanly in a JS cell.
+
+Either language's output persists into the note's own markdown the moment a run finishes, so it's still there after closing and reopening the note — not just for the current session.
+
 ## Tables
 
 Type `/table` in Edit mode and Sanctum drops in a click-to-edit grid — no hand-aligning pipe characters. Click any cell to edit it, use the `+` buttons to add rows and columns, hover a row or column for its delete button. A table too wide for the page scrolls within itself instead of pushing the rest of the page sideways — drag anywhere in it to pan, or use the expand icon (appears once a table's actually wide enough to need it) for a fullscreen view.

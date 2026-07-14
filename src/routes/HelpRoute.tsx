@@ -6,6 +6,8 @@ import { useDragScrollTables } from '../hooks/useDragScrollTables'
 import { useTableMinWidth } from '../hooks/useTableMinWidth'
 import { useTableExpand } from '../hooks/useTableExpand'
 import { useTabsStore, HELP_TAB_ID } from '../stores/tabs.store'
+import { splitAroundCodeBlocks } from '../lib/split-code-segments'
+import { CodeBlock } from '../components/editor/CodeBlock'
 import GUIDE_MARKDOWN from '../content/syntax-guide.md?raw'
 
 // A static reference page, not a real vault note, but rendered inside the
@@ -22,11 +24,11 @@ import GUIDE_MARKDOWN from '../content/syntax-guide.md?raw'
 //
 // Content is rendered through the exact same renderBody() pipeline every
 // note uses, so every live example here (callouts, tables, math, mermaid,
-// etc.) is proof it actually works, not just a description. Wikilinks/
-// transclusion/media embeds are shown as code blocks instead of live
-// examples deliberately — those features are inherently tied to real vault
-// content, and faking a resolved link here would be misleading rather than
-// helpful.
+// python/javascript, etc.) is proof it actually works, not just a
+// description. Wikilinks/transclusion/media embeds are shown as code
+// blocks instead of live examples deliberately — those features are
+// inherently tied to real vault content, and faking a resolved link here
+// would be misleading rather than helpful.
 export function HelpRoute() {
   const containerRef = useRef<HTMLDivElement>(null)
   const expandedRef = useRef<HTMLDivElement>(null)
@@ -35,6 +37,13 @@ export function HelpRoute() {
   // here too, per this page's own "nothing here is a mockup" principle.
   const [expandedTableHtml, setExpandedTableHtml] = useState<string | null>(null)
   const html = useMemo(() => renderBody(GUIDE_MARKDOWN), [])
+  // Same HTML-splitting MarkdownReader uses to mount a real, sibling
+  // <CodeBlock> next to each runnable python/javascript example instead of
+  // portaling into the rendered HTML (see split-code-segments.ts's own
+  // comment for why that's specifically the pattern to avoid) — the guide's
+  // examples get a genuine, clickable Run button, not just syntax-
+  // highlighted text claiming one exists.
+  const segments = useMemo(() => splitAroundCodeBlocks(html), [html])
 
   useCharts(containerRef)
   useDragScrollTables(containerRef)
@@ -53,7 +62,36 @@ export function HelpRoute() {
 
   return (
     <>
-      <div ref={containerRef} className="markdown-body" dangerouslySetInnerHTML={{ __html: html }} />
+      <div ref={containerRef} className="markdown-body">
+        {segments.map((segment, i) =>
+          segment.type === 'html' ? (
+            <div key={i} dangerouslySetInnerHTML={{ __html: segment.html }} />
+          ) : (
+            <div
+              key={i}
+              className={`${segment.language}-cell-wrapper overflow-hidden rounded-md border`}
+              style={{ borderColor: 'var(--border)' }}
+            >
+              <div dangerouslySetInnerHTML={{ __html: segment.codeHtml }} />
+              {/* HELP_TAB_ID as the kernel key (not a real note id — this
+                  page has no editable Drive note to persist into) gives the
+                  guide's own examples a stable, always-available kernel
+                  that survives navigating away and back, same lifecycle a
+                  real note's kernel gets. No onPersist — GUIDE_MARKDOWN is
+                  a static build-time import, not something writable, so a
+                  run's result just lives in the kernel store for this
+                  session, same as any note's would before its first save. */}
+              <CodeBlock
+                language={segment.language}
+                noteId={HELP_TAB_ID}
+                blockKey={segment.key}
+                code={segment.code}
+                initialOutput={segment.initialOutput}
+              />
+            </div>
+          ),
+        )}
+      </div>
       <Modal
         isOpen={expandedTableHtml !== null}
         onClose={() => setExpandedTableHtml(null)}
