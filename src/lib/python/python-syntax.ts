@@ -1,3 +1,5 @@
+import { parseFenceInfo } from '../fence-info'
+
 // Fence-language literals — re-exported by runnable-languages.ts (the
 // shared table split-blocks.ts's merging and plugin-code-blocks.ts's
 // rendering both key off of) so there's exactly one place either string
@@ -32,12 +34,27 @@ export interface PersistedPythonOutput {
 // concern, not this one's. The optional `\r?\n?` before the closing fence
 // mirrors this pattern's original leniency (tolerates a fence closed with
 // no blank line before it, e.g. an empty `/python` snippet).
-const PYTHON_FENCE_PATTERN = /^```python\r?\n([\s\S]*?)\r?\n?```/
+//
+// The opening line's info string is captured whole (not hardcoded to just
+// `python`) so a `^block-id` suffix (see fence-info.ts) can still match —
+// parseFenceInfo below is what actually checks the language.
+const PYTHON_FENCE_PATTERN = /^```([^\n]*)\r?\n([\s\S]*?)\r?\n?```/
 
 export function parsePythonBlock(rawText: string): string | null {
   const match = PYTHON_FENCE_PATTERN.exec(rawText.trim())
   if (match === null) return null
-  return match[1]
+  if (parseFenceInfo(match[1]).lang !== PYTHON_LANG) return null
+  return match[2]
+}
+
+// A tagged cell's `^block-id`, if any — e.g. from ` ```python ^intro-imports `.
+// Kept separate from parsePythonBlock rather than folded into its return
+// value, so every existing `parsedPython !== null` check in Block.tsx stays
+// exactly as it is.
+export function parsePythonBlockId(rawText: string): string | null {
+  const match = PYTHON_FENCE_PATTERN.exec(rawText.trim())
+  if (match === null || parseFenceInfo(match[1]).lang !== PYTHON_LANG) return null
+  return parseFenceInfo(match[1]).blockId
 }
 
 // Matches a ```python-output fence anchored to the very end of the block's
@@ -62,9 +79,12 @@ export function parsePersistedOutput(rawText: string): PersistedPythonOutput | n
 // place that reconstructs a block's full rawText after a run completes.
 // Pretty-printed JSON (not single-line) matches this codebase's existing
 // "regenerate a readable, normalized form" convention (serializeFrontmatter,
-// serializeTable).
-export function serializePythonBlock(code: string, output: PersistedPythonOutput | null): string {
-  const codeFence = '```python\n' + code + '\n```'
+// serializeTable). blockId is optional and re-emitted on the opening fence
+// line when present — Block.tsx calls this on every keystroke in the code
+// editor, so if this ever stopped re-attaching a tagged cell's id, the very
+// next keystroke after tagging a cell would silently untag it.
+export function serializePythonBlock(code: string, output: PersistedPythonOutput | null, blockId?: string | null): string {
+  const codeFence = '```python' + (blockId ? ' ^' + blockId : '') + '\n' + code + '\n```'
   if (!output) return codeFence
   return codeFence + '\n```python-output\n' + JSON.stringify(output, null, 2) + '\n```'
 }

@@ -1,5 +1,6 @@
 import type MarkdownIt from 'markdown-it'
 import { RUNNABLE_LANGUAGES } from '../runnable-languages'
+import { parseFenceInfo } from '../fence-info'
 
 // Intercepts every runnable-language fence (```python, ```javascript —
 // see runnable-languages.ts) — unlike plugin-chart.ts (which fully
@@ -41,7 +42,7 @@ export function codeBlocksPlugin(md: MarkdownIt): void {
 
   md.renderer.rules.fence = (tokens, idx, options, env, self) => {
     const token = tokens[idx]
-    const lang = token.info.trim().toLowerCase()
+    const { lang, blockId } = parseFenceInfo(token.info)
 
     const outputConfig = RUNNABLE_LANGUAGES.find((l) => l.outputLang === lang)
     if (outputConfig) {
@@ -49,7 +50,7 @@ export function codeBlocksPlugin(md: MarkdownIt): void {
       const isConsumedByPrecedingFence =
         prev !== undefined &&
         prev.type === 'fence' &&
-        prev.info.trim().toLowerCase() === outputConfig.lang &&
+        parseFenceInfo(prev.info).lang === outputConfig.lang &&
         prev.map !== null &&
         token.map !== null &&
         prev.map[1] === token.map[0]
@@ -70,7 +71,7 @@ export function codeBlocksPlugin(md: MarkdownIt): void {
     const hasAdjacentOutput =
       next !== undefined &&
       next.type === 'fence' &&
-      next.info.trim().toLowerCase() === runnableConfig.outputLang &&
+      parseFenceInfo(next.info).lang === runnableConfig.outputLang &&
       next.map !== null &&
       token.map !== null &&
       next.map[0] === token.map[1]
@@ -94,6 +95,13 @@ export function codeBlocksPlugin(md: MarkdownIt): void {
       }
     }
 
-    return `<div class="${runnableConfig.blockClass}" data-runnable-lang="${runnableConfig.lang}" data-src-line="${srcLine}" data-src-line-end="${srcLineEnd}"${outputAttr}>${highlighted}<div class="code-run-controls"></div></div>\n`
+    // The id attribute is what lets a bare `[[Note^block-id]]` link scroll-
+    // jump straight to this cell (same mechanism plugin-block-id.ts already
+    // gives paragraphs/list-items), and what transclusion.ts's
+    // extractSection scans raw source for when resolving a `![[Note^id]]`
+    // single-cell embed.
+    const idAttr = blockId ? ` id="${blockId}"` : ''
+
+    return `<div class="${runnableConfig.blockClass}"${idAttr} data-runnable-lang="${runnableConfig.lang}" data-src-line="${srcLine}" data-src-line-end="${srcLineEnd}"${outputAttr}>${highlighted}<div class="code-run-controls"></div></div>\n`
   }
 }

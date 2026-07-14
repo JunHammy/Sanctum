@@ -12,8 +12,13 @@ import { useNoteStore } from '../../stores/note.store'
 import { renderBody } from '../../services/markdown.service'
 import { parseTable } from '../../lib/table-syntax'
 import { parseMathBlock } from '../../lib/math-syntax'
-import { parsePythonBlock, parsePersistedOutput, serializePythonBlock } from '../../lib/python/python-syntax'
-import { parseJavaScriptBlock, parseJsPersistedOutput, serializeJavaScriptBlock } from '../../lib/javascript/javascript-syntax'
+import { parsePythonBlock, parsePythonBlockId, parsePersistedOutput, serializePythonBlock } from '../../lib/python/python-syntax'
+import {
+  parseJavaScriptBlock,
+  parseJavaScriptBlockId,
+  parseJsPersistedOutput,
+  serializeJavaScriptBlock,
+} from '../../lib/javascript/javascript-syntax'
 import { MarkdownEditor } from './MarkdownEditor'
 import { TableGridEditor } from './TableGridEditor'
 import { MathBlockEditor } from './MathBlockEditor'
@@ -161,20 +166,27 @@ export const Block = memo(function Block({
   // starting point so a note doesn't come up blank before anything's been
   // (re-)run this session.
   const parsedOutput = parsePersistedOutput(block.rawText)
+  // A ```python ^block-id cell's tag, if any — re-threaded into every
+  // serializePythonBlock call below so typing (or running) the cell never
+  // silently drops it. See python-syntax.ts's own comment on why this has
+  // to happen on every keystroke, not just after a run.
+  const parsedPythonBlockId = parsePythonBlockId(block.rawText)
   // JavaScript's own counterpart — a block is never both at once (the fence
   // language decides which, and split-blocks.ts only ever merges a
   // ```javascript-output onto a matching ```javascript fence), so exactly
   // one of parsedPython/parsedJavaScript is non-null for any runnable block.
   const parsedJavaScript = parseJavaScriptBlock(block.rawText)
   const parsedJsOutput = parseJsPersistedOutput(block.rawText)
+  const parsedJsBlockId = parseJavaScriptBlockId(block.rawText)
 
   // Writes a completed run's result back into this block's own rawText —
   // rides the same onChange → BlockEditor.handleBlockChange → note.store
   // pipeline any other edit to this block already goes through, so
   // persisted output picks up autosave/undo for free.
   function handlePersistOutput(output: PersistedCodeOutput) {
-    if (parsedPython !== null) onChange(block.id, serializePythonBlock(parsedPython, output))
-    else if (parsedJavaScript !== null) onChange(block.id, serializeJavaScriptBlock(parsedJavaScript, output))
+    if (parsedPython !== null) onChange(block.id, serializePythonBlock(parsedPython, output, parsedPythonBlockId))
+    else if (parsedJavaScript !== null)
+      onChange(block.id, serializeJavaScriptBlock(parsedJavaScript, output, parsedJsBlockId))
   }
 
   // Expanding always lands you in the editable grid/equation, even from
@@ -311,7 +323,7 @@ export const Block = memo(function Block({
                   bare
                   language="python"
                   value={parsedPython}
-                  onChange={(text) => onChange(block.id, serializePythonBlock(text, parsedOutput))}
+                  onChange={(text) => onChange(block.id, serializePythonBlock(text, parsedOutput, parsedPythonBlockId))}
                 />
                 {activeNoteId && (
                   <CodeBlock
@@ -334,7 +346,7 @@ export const Block = memo(function Block({
                   bare
                   language="javascript"
                   value={parsedJavaScript}
-                  onChange={(text) => onChange(block.id, serializeJavaScriptBlock(text, parsedJsOutput))}
+                  onChange={(text) => onChange(block.id, serializeJavaScriptBlock(text, parsedJsOutput, parsedJsBlockId))}
                 />
                 {activeNoteId && (
                   <CodeBlock

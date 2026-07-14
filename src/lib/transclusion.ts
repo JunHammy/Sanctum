@@ -1,7 +1,14 @@
 import { slugify } from '../services/markdown.service'
 import { parseWikilinkInner } from './wikilink-syntax'
+import { parseFenceInfo } from './fence-info'
+import { RUNNABLE_LANGUAGES } from './runnable-languages'
 
 const EMBED_PATTERN = /^!\[\[([^\]]+)\]\]$/
+// A fence's opening line — used to tell a `^block-id` match on a fence's
+// opening line (e.g. ` ```python ^my-id `) apart from one trailing a plain
+// paragraph/list-item, since the two need genuinely different extraction
+// logic (see extractFenceBlock below).
+const FENCE_OPEN_PATTERN = /^(`{3,})/
 // Optional heading-range extension: `![[Note#Section1..#Section2]]` embeds
 // everything from Section1 through the end of Section2's own section. `..`
 // rather than a word like "to" — a symbol essentially never collides with
@@ -42,6 +49,42 @@ function headingLevelAt(lines: string[], idx: number): number {
   return /^(#{1,6})/.exec(lines[idx])![1].length
 }
 
+// First line at or after openIdx+1 consisting only of `marker`-or-more
+// backticks (and optional trailing whitespace) — mirrors CommonMark/
+// markdown-it's own fence-closing rule (first qualifying line wins, however
+// unusual that is for a fence whose *content* happens to contain a
+// bare-backticks line — the real renderer has that same behavior, this
+// isn't a new edge case).
+function findFenceClose(lines: string[], openIdx: number, marker: string): number {
+  const closePattern = new RegExp(`^${marker}+\\s*$`)
+  for (let i = openIdx + 1; i < lines.length; i++) {
+    if (closePattern.test(lines[i])) return i
+  }
+  return -1
+}
+
+// A `^block-id` on a fence's opening line means "just this cell" — the code
+// fence through its own closing fence, plus (when present, with zero blank
+// lines between) its paired `-output` fence through *its* closing fence too,
+// matching the exact adjacency convention plugin-code-blocks.ts/
+// split-blocks.ts already use when pairing a runnable fence with its output.
+function extractFenceBlock(lines: string[], openIdx: number, marker: string): string | null {
+  const closeIdx = findFenceClose(lines, openIdx, marker)
+  if (closeIdx === -1) return null
+
+  const codeLang = parseFenceInfo(lines[openIdx].slice(marker.length)).lang
+  const outputLang = RUNNABLE_LANGUAGES.find((l) => l.lang === codeLang)?.outputLang
+  const nextLine = lines[closeIdx + 1]
+  const nextOpen = outputLang && nextLine !== undefined ? FENCE_OPEN_PATTERN.exec(nextLine) : null
+
+  if (nextOpen && parseFenceInfo(nextLine.slice(nextOpen[1].length)).lang === outputLang) {
+    const outputCloseIdx = findFenceClose(lines, closeIdx + 1, nextOpen[1])
+    if (outputCloseIdx !== -1) return lines.slice(openIdx, outputCloseIdx + 1).join('\n')
+  }
+
+  return lines.slice(openIdx, closeIdx + 1).join('\n')
+}
+
 // Narrows a note's body down to just the requested section for a scoped
 // embed (`![[Note#Heading]]` / `![[Note#Heading..#Heading2]]` /
 // `![[Note^block-id]]`) — a whole-note embed (none given) just uses the
@@ -58,6 +101,14 @@ export function extractSection(
     const pattern = new RegExp(`\\s\\^${blockId}\\s*$`)
     const idx = lines.findIndex((line) => pattern.test(line))
     if (idx === -1) return null
+
+    // A ```python ^block-id fence's opening line also ends in ` ^block-id`,
+    // so it's already found by the same scan above — what differs is how
+    // far the block extends from here (through its own closing fence, and
+    // possibly a paired output fence too, not just this one line).
+    const fenceMatch = FENCE_OPEN_PATTERN.exec(lines[idx])
+    if (fenceMatch) return extractFenceBlock(lines, idx, fenceMatch[1])
+
     // Walk back to the start of this contiguous block (the previous blank
     // line, or the top of the note) — a block-id embed means "just this
     // paragraph/list," not everything above it too.

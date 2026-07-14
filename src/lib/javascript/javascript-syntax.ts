@@ -1,3 +1,5 @@
+import { parseFenceInfo } from '../fence-info'
+
 // JavaScript's own counterpart to python-syntax.ts — deliberately a
 // separate, self-contained file rather than a shared/parameterized module:
 // python-syntax.ts is heavily exercised, tested code, and duplicating this
@@ -22,12 +24,26 @@ export interface PersistedJsOutput {
   errorMessage: string | null
 }
 
-const JS_FENCE_PATTERN = /^```javascript\r?\n([\s\S]*?)\r?\n?```/
+// The opening line's info string is captured whole (not hardcoded to just
+// `javascript`) so a `^block-id` suffix (see fence-info.ts) can still match
+// — parseFenceInfo below is what actually checks the language.
+const JS_FENCE_PATTERN = /^```([^\n]*)\r?\n([\s\S]*?)\r?\n?```/
 
 export function parseJavaScriptBlock(rawText: string): string | null {
   const match = JS_FENCE_PATTERN.exec(rawText.trim())
   if (match === null) return null
-  return match[1]
+  if (parseFenceInfo(match[1]).lang !== JS_LANG) return null
+  return match[2]
+}
+
+// A tagged cell's `^block-id`, if any — e.g. from ` ```javascript ^my-cell `.
+// Kept separate from parseJavaScriptBlock rather than folded into its return
+// value, so every existing `parsedJavaScript !== null` check in Block.tsx
+// stays exactly as it is.
+export function parseJavaScriptBlockId(rawText: string): string | null {
+  const match = JS_FENCE_PATTERN.exec(rawText.trim())
+  if (match === null || parseFenceInfo(match[1]).lang !== JS_LANG) return null
+  return parseFenceInfo(match[1]).blockId
 }
 
 const PERSISTED_OUTPUT_PATTERN = /```javascript-output\r?\n([\s\S]*?)\r?\n?```\s*$/
@@ -42,8 +58,11 @@ export function parseJsPersistedOutput(rawText: string): PersistedJsOutput | nul
   }
 }
 
-export function serializeJavaScriptBlock(code: string, output: PersistedJsOutput | null): string {
-  const codeFence = '```javascript\n' + code + '\n```'
+// blockId is optional and re-emitted on the opening fence line when present
+// — see serializePythonBlock's own comment for why this matters on every
+// keystroke, not just after a Run.
+export function serializeJavaScriptBlock(code: string, output: PersistedJsOutput | null, blockId?: string | null): string {
+  const codeFence = '```javascript' + (blockId ? ' ^' + blockId : '') + '\n' + code + '\n```'
   if (!output) return codeFence
   return codeFence + '\n```javascript-output\n' + JSON.stringify(output, null, 2) + '\n```'
 }

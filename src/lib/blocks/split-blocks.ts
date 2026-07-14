@@ -1,5 +1,6 @@
 import MarkdownIt from 'markdown-it'
 import { RUNNABLE_LANGUAGES } from '../runnable-languages'
+import { parseFenceInfo } from '../fence-info'
 
 // Splits raw markdown into top-level block chunks using markdown-it's own
 // tokenizer (no custom plugin chain needed — plugins like wikilink/callout
@@ -50,8 +51,8 @@ export function splitIntoBlocks(markdown: string): Block[] {
       // python-syntax.ts's/javascript-syntax.ts's own serializeXBlock for
       // the writer side of this same adjacency convention.
       const next = tokens[i + 1]
-      const isRunnableFence =
-        token.type === 'fence' && RUNNABLE_LANGUAGES.some((l) => l.lang === token.info.trim().toLowerCase())
+      const tokenLang = token.type === 'fence' ? parseFenceInfo(token.info).lang : null
+      const isRunnableFence = tokenLang !== null && RUNNABLE_LANGUAGES.some((l) => l.lang === tokenLang)
       const nextIsAdjacentOutput =
         isRunnableFence &&
         next !== undefined &&
@@ -59,9 +60,7 @@ export function splitIntoBlocks(markdown: string): Block[] {
         next.type === 'fence' &&
         next.map !== null &&
         next.map[0] === token.map[1] &&
-        RUNNABLE_LANGUAGES.some(
-          (l) => l.lang === token.info.trim().toLowerCase() && l.outputLang === next.info.trim().toLowerCase(),
-        )
+        RUNNABLE_LANGUAGES.some((l) => l.lang === tokenLang && l.outputLang === parseFenceInfo(next.info).lang)
 
       if (isRunnableFence && nextIsAdjacentOutput && next.map) {
         const [startLine] = token.map

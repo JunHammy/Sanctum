@@ -26,6 +26,12 @@ export interface CodeSegment {
   codeHtml: string
   code: string
   initialOutput: PersistedCodeOutput | null
+  // A ```lang ^block-id cell's tag, if any — read straight off the wrapper
+  // element's own `id` attribute (plugin-code-blocks.ts already sets it
+  // there when present), so MarkdownReader.tsx's own persistOutput can
+  // re-thread it into serializePythonBlock/serializeJavaScriptBlock instead
+  // of silently dropping it on every Read-mode run.
+  blockId: string | null
   // Line range in the note's raw text (data-src-line/data-src-line-end,
   // plugin-code-blocks.ts) this block occupies — needed to splice a
   // completed run's result back in. Null means "couldn't parse the
@@ -126,6 +132,7 @@ export function splitAroundCodeBlocks(html: string): CodeReaderSegment[] {
       // entering the captured group.
       code: (codeEl?.textContent ?? '').replace(/\n$/, ''),
       initialOutput,
+      blockId: child.id || null,
       startLine: child.dataset.srcLine !== undefined ? Number(child.dataset.srcLine) : null,
       endLine: child.dataset.srcLineEnd !== undefined ? Number(child.dataset.srcLineEnd) : null,
     })

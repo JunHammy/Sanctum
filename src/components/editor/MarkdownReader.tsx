@@ -87,6 +87,7 @@ export function MarkdownReader({ html, currentFileId }: MarkdownReaderProps) {
   function persistOutput(
     language: 'python' | 'javascript',
     code: string,
+    blockId: string | null,
     startLine: number | null,
     endLine: number | null,
     output: PersistedCodeOutput,
@@ -94,7 +95,8 @@ export function MarkdownReader({ html, currentFileId }: MarkdownReaderProps) {
     if (startLine === null || endLine === null || Number.isNaN(startLine) || Number.isNaN(endLine)) return
     const { rawBody, updateContent } = useNoteStore.getState()
     const lines = rawBody.split('\n')
-    const serialized = language === 'python' ? serializePythonBlock(code, output) : serializeJavaScriptBlock(code, output)
+    const serialized =
+      language === 'python' ? serializePythonBlock(code, output, blockId) : serializeJavaScriptBlock(code, output, blockId)
     const nextLines = [...lines.slice(0, startLine), serialized, ...lines.slice(endLine)]
     updateContent(nextLines.join('\n'))
   }
@@ -209,7 +211,9 @@ export function MarkdownReader({ html, currentFileId }: MarkdownReaderProps) {
                   blockKey={segment.key}
                   code={segment.code}
                   initialOutput={segment.initialOutput}
-                  onPersist={(output) => persistOutput(segment.language, segment.code, segment.startLine, segment.endLine, output)}
+                  onPersist={(output) =>
+                    persistOutput(segment.language, segment.code, segment.blockId, segment.startLine, segment.endLine, output)
+                  }
                 />
               )}
             </div>
