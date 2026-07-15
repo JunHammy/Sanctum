@@ -35,6 +35,7 @@ function joinSource(source: string | string[] | undefined): string {
 // for the exception type, etc.) — meaningless once copied into a plain
 // markdown code fence, so stripped rather than left as garbage \x1b[...m
 // sequences in the persisted error text.
+// eslint-disable-next-line no-control-regex -- matching the literal ESC byte is the point, see comment above
 const ANSI_PATTERN = /\x1b\[[0-9;]*m/g
 
 // Maps every ipynb output_type this converter supports onto Sanctum's own

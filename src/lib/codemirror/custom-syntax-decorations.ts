@@ -1,6 +1,6 @@
 import { EditorView, Decoration, ViewPlugin, WidgetType, type DecorationSet, type ViewUpdate } from '@codemirror/view'
 import { RangeSetBuilder } from '@codemirror/state'
-import katex from 'katex'
+import { useKatexStore } from '../../stores/katex.store'
 
 // Live-preview decorations for Sanctum's custom syntax (wikilinks, callouts,
 // tags, ==highlight==) — none of this is part of the standard CommonMark/GFM
@@ -51,11 +51,15 @@ class WikilinkWidget extends WidgetType {
   }
 }
 
-// KaTeX (unlike MathLive) is a small, synchronous, already-eagerly-loaded
-// dependency — katex-setup.ts's own Read-mode rendering already relies on
-// it directly, and its CSS is already imported globally in main.tsx — so
-// this can render real math markup inline immediately, no dynamic import
-// or async loading state needed, unlike MathBlockEditor's MathLive field.
+// katex is prefetched (see prefetch-katex.ts, fired the moment AppShell
+// mounts) rather than eagerly bundled — by the time a user actually reaches
+// Edit mode with this live-preview widget visible, it's almost always
+// already loaded. Read synchronously here too (same constraint as
+// katex-setup.ts's renderTex — toDOM() can't await), with a graceful
+// fallback to plain raw text in the rare case it hasn't arrived yet, rather
+// than crashing. Sharing this one prefetched module (instead of this file's
+// own separate static import, as before) is also what keeps katex to a
+// single downloaded chunk rather than two near-duplicate ones.
 class MathWidget extends WidgetType {
   tex: string
 
@@ -67,6 +71,11 @@ class MathWidget extends WidgetType {
   toDOM() {
     const span = document.createElement('span')
     span.className = 'cm-live-math'
+    const katex = useKatexStore.getState().module
+    if (!katex) {
+      span.textContent = this.tex
+      return span
+    }
     try {
       span.innerHTML = katex.renderToString(this.tex.trim(), { throwOnError: false })
     } catch {

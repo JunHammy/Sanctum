@@ -83,6 +83,7 @@ export function MarkdownEditor({ value, onChange, bare, language = 'markdown' }:
     })
 
     return () => view.destroy()
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- deliberately mount-once; see this component's own top comment on the key-forces-remount contract callers must uphold
   }, [])
 
   return (

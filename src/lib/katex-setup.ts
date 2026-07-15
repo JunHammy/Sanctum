@@ -1,4 +1,4 @@
-import katex from 'katex'
+import { useKatexStore } from '../stores/katex.store'
 
 // Runs as a post-render pass on already-rendered HTML (per MP §6.2), not as
 // a markdown-it inline plugin — avoids conflicts between markdown-it's own
@@ -17,9 +17,21 @@ const INLINE_MATH_PATTERN = /\$([^$\n]+?)\$/g
 function placeholder(idx: number): string {
   return `\0${idx}\0`
 }
+// eslint-disable-next-line no-control-regex -- matching the literal null byte is the point, see placeholder()'s own comment
 const PLACEHOLDER_PATTERN = /\0(\d+)\0/g
 
+// katex is prefetched (not eagerly bundled) via prefetch-katex.ts, fired
+// the moment AppShell mounts — by the time a note's math actually needs
+// rendering it's very likely already loaded. This stays synchronous either
+// way: if it hasn't arrived yet, the original delimited text is returned
+// unchanged (reconstructed from displayMode, since the regex that called
+// this already stripped the $ / $$ delimiters) rather than attempting to
+// call a module that isn't there — so if this exact string gets rendered
+// again later (e.g. AppShell's own self-heal once loadKatex() resolves),
+// the same regex still matches it and renders it properly then.
 function renderTex(tex: string, displayMode: boolean): string {
+  const katex = useKatexStore.getState().module
+  if (!katex) return displayMode ? `$$${tex}$$` : `$${tex}$`
   try {
     return katex.renderToString(tex.trim(), { displayMode, throwOnError: false })
   } catch {

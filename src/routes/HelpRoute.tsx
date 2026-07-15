@@ -6,6 +6,7 @@ import { useDragScrollTables } from '../hooks/useDragScrollTables'
 import { useTableMinWidth } from '../hooks/useTableMinWidth'
 import { useTableExpand } from '../hooks/useTableExpand'
 import { useTabsStore, HELP_TAB_ID } from '../stores/tabs.store'
+import { useKatexStore } from '../stores/katex.store'
 import { splitAroundCodeBlocks } from '../lib/split-code-segments'
 import { CodeBlock } from '../components/editor/CodeBlock'
 import GUIDE_MARKDOWN from '../content/syntax-guide.md?raw'
@@ -36,7 +37,13 @@ export function HelpRoute() {
   // table example describes the expand icon, so it should actually work
   // here too, per this page's own "nothing here is a mockup" principle.
   const [expandedTableHtml, setExpandedTableHtml] = useState<string | null>(null)
-  const html = useMemo(() => renderBody(GUIDE_MARKDOWN), [])
+  // katexLoaded in the dependency array (unused otherwise) — AppShell's own
+  // prefetch self-heals a note's own html once katex loads, but this page
+  // renders through its own separate useMemo, not note.store, so it needs
+  // the same re-render trigger applied directly here instead.
+  const katexLoaded = useKatexStore((s) => s.module !== null)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const html = useMemo(() => renderBody(GUIDE_MARKDOWN), [katexLoaded])
   // Same HTML-splitting MarkdownReader uses to mount a real, sibling
   // <CodeBlock> next to each runnable python/javascript example instead of
   // portaling into the rendered HTML (see split-code-segments.ts's own

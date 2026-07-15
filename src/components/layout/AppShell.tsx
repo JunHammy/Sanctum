@@ -8,6 +8,9 @@ import { SearchModal } from '../search/SearchModal'
 import { CommandPalette } from '../common/CommandPalette'
 import { useKeyboardShortcut } from '../../hooks/useKeyboard'
 import { loadBlockEditor } from '../../lib/prefetch-block-editor'
+import { loadKatex } from '../../lib/prefetch-katex'
+import { useNoteStore } from '../../stores/note.store'
+import { renderBody } from '../../services/markdown.service'
 import type { FileTreeNode } from '../../types/vault.types'
 
 interface AppShellProps {
@@ -43,8 +46,22 @@ export function AppShell({ fileTree, isLoading, error, onRefresh, children }: Ap
   // (vault list, then note content, then this chunk, all sequentially) a
   // user who toggled to Edit right away could still beat the prefetch.
   // Starting it here overlaps it with those other requests instead.
+  //
+  // loadKatex() gets the same early start, for the same reason — by the
+  // time any note's math actually needs rendering, katex has very likely
+  // already arrived. katex-setup.ts's renderTex stays fully synchronous and
+  // just falls back to the original raw $-delimited text if it hasn't — the
+  // .then() here covers the one case that fallback can't fix on its own:
+  // a note already open and rendered *before* katex finished loading. Every
+  // other render path (Block.tsx's per-block preview, most visibly) already
+  // recomputes on its own next render regardless, so needs no equivalent
+  // patch here.
   useEffect(() => {
     loadBlockEditor()
+    loadKatex().then(() => {
+      const { activeNoteId, rawBody } = useNoteStore.getState()
+      if (activeNoteId) useNoteStore.setState({ html: renderBody(rawBody) })
+    })
   }, [])
 
   return (
