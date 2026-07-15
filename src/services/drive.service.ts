@@ -204,6 +204,11 @@ export function setFileOrder(fileId: string, order: number): Promise<DriveFile> 
   return withAuth((token) => driveApi.setFileOrder(token, fileId, order))
 }
 
+export function setFileStarred(fileId: string, starred: boolean): Promise<DriveFile> {
+  assertOnline()
+  return withAuth((token) => driveApi.setFileStarred(token, fileId, starred))
+}
+
 export function trashFile(fileId: string): Promise<void> {
   assertOnline()
   return withAuth((token) => driveApi.trashFile(token, fileId))

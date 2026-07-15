@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ChevronRight, FileText, Pencil, Trash2 } from 'lucide-react'
+import { ChevronRight, FileText, MoreHorizontal, Pencil, Star, Trash2 } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useUIStore } from '../../stores/ui.store'
 import { useVaultStore } from '../../stores/vault.store'
@@ -35,17 +35,43 @@ export function FileTreeNode({ node, depth, parentId }: { node: FileTreeNodeType
   const [dragOverMode, setDragOverMode] = useState<'into' | 'before' | 'after' | null>(null)
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [renameOpen, setRenameOpen] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
   const navigate = useNavigate()
   const closeSidebar = useUIStore((s) => s.closeSidebar)
   const moveNode = useVaultStore((s) => s.moveNode)
   const renameNode = useVaultStore((s) => s.renameNode)
   const reorderNode = useVaultStore((s) => s.reorderNode)
+  const toggleStarred = useVaultStore((s) => s.toggleStarred)
   const deleteNode = useVaultStore((s) => s.deleteNode)
   const fileTree = useVaultStore((s) => s.fileTree)
   const closeTabs = useTabsStore((s) => s.closeTabs)
   const showToast = useToastStore((s) => s.show)
   const isTouch = useIsTouchDevice()
   const { fileId: activeFileId } = useParams<{ fileId?: string }>()
+
+  // Same small anchored-dropdown pattern as Sidebar.tsx's own "More vault
+  // actions" menu (no shared hook — that one's own comment already notes
+  // there's no dropdown primitive to reuse; duplicating this ~10-line
+  // effect per-row is cheaper than introducing one for two consumers).
+  // Consolidating rename+delete behind one "⋯" is what keeps a starred
+  // file's row down to two icons (star, ⋯) instead of three competing for
+  // the same small hover-revealed space.
+  useEffect(() => {
+    if (!menuOpen) return
+    function handleClickOutside(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false)
+    }
+    function handleEscape(e: KeyboardEvent) {
+      if (e.key === 'Escape') setMenuOpen(false)
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    document.addEventListener('keydown', handleEscape)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+      document.removeEventListener('keydown', handleEscape)
+    }
+  }, [menuOpen])
 
   // Every attachment type except PDF stays fully invisible here (MP §5.3) —
   // a PDF gets a real row and opens in its own tab (PdfViewer.tsx), same
@@ -93,22 +119,58 @@ export function FileTreeNode({ node, depth, parentId }: { node: FileTreeNodeType
     }
   }
 
-  const renameButton = (
-    <>
+  const actionsMenu = (
+    <div className="relative shrink-0" ref={menuRef}>
       <button
         type="button"
-        aria-label={`Rename ${displayName}`}
-        className={`shrink-0 rounded p-1 transition-opacity hover:opacity-100 ${
+        aria-label={`More actions for ${displayName}`}
+        className={`rounded p-1 transition-opacity hover:opacity-100 ${
           isTouch ? 'opacity-70' : 'opacity-0 group-hover:opacity-100'
         }`}
         style={{ color: 'var(--text-muted)' }}
         onClick={(e) => {
           e.stopPropagation()
-          setRenameOpen(true)
+          setMenuOpen((open) => !open)
         }}
       >
-        <Pencil size={13} />
+        <MoreHorizontal size={14} />
       </button>
+      <AnimatePresence>
+        {menuOpen && (
+          <motion.div
+            className="absolute top-full right-0 z-50 mt-1 w-36 rounded-md border p-1 shadow-lg"
+            style={{ borderColor: 'var(--border)', background: 'var(--bg-primary)' }}
+            initial={{ opacity: 0, y: -4, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -4, scale: 0.98 }}
+            transition={{ duration: 0.12 }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-[var(--bg-tertiary)]"
+              onClick={() => {
+                setMenuOpen(false)
+                setRenameOpen(true)
+              }}
+            >
+              <Pencil size={13} style={{ color: 'var(--text-muted)' }} />
+              <span style={{ color: 'var(--text-primary)' }}>Rename</span>
+            </button>
+            <button
+              type="button"
+              className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-[var(--bg-tertiary)]"
+              onClick={() => {
+                setMenuOpen(false)
+                setConfirmOpen(true)
+              }}
+            >
+              <Trash2 size={13} style={{ color: 'var(--error)' }} />
+              <span style={{ color: 'var(--error)' }}>Delete</span>
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
       <PromptModal
         isOpen={renameOpen}
         title={node.type === 'folder' ? 'Rename folder' : isPdf ? 'Rename PDF' : 'Rename note'}
@@ -121,25 +183,6 @@ export function FileTreeNode({ node, depth, parentId }: { node: FileTreeNodeType
         }}
         onClose={() => setRenameOpen(false)}
       />
-    </>
-  )
-
-  const deleteButton = (
-    <>
-      <button
-        type="button"
-        aria-label={`Delete ${displayName}`}
-        className={`shrink-0 rounded p-1 transition-opacity hover:text-[var(--error)] ${
-          isTouch ? 'opacity-70' : 'opacity-0 group-hover:opacity-100'
-        }`}
-        style={{ color: 'var(--text-muted)' }}
-        onClick={(e) => {
-          e.stopPropagation()
-          setConfirmOpen(true)
-        }}
-      >
-        <Trash2 size={13} />
-      </button>
       <ConfirmModal
         isOpen={confirmOpen}
         title={node.type === 'folder' ? 'Delete folder' : isPdf ? 'Delete PDF' : 'Delete note'}
@@ -151,7 +194,7 @@ export function FileTreeNode({ node, depth, parentId }: { node: FileTreeNodeType
         onConfirm={handleDelete}
         onClose={() => setConfirmOpen(false)}
       />
-    </>
+    </div>
   )
 
   if (node.type === 'folder') {
@@ -254,8 +297,7 @@ export function FileTreeNode({ node, depth, parentId }: { node: FileTreeNodeType
             </motion.span>
             <span className="truncate">{node.name}</span>
           </button>
-          {renameButton}
-          {deleteButton}
+          {actionsMenu}
         </div>
         <AnimatePresence initial={false}>
           {expanded && (
@@ -277,6 +319,28 @@ export function FileTreeNode({ node, depth, parentId }: { node: FileTreeNodeType
   }
 
   const isActive = node.id === activeFileId
+
+  // Unlike actionsMenu's "⋯" trigger (which only matters once clicked, so
+  // pure hover-reveal is correct), a star needs to be visible without
+  // hovering — otherwise there's no way to recognize a starred item at a
+  // glance. Only shown here (the file-row return), never for folders —
+  // starring is a leaf-item concept, same scope as isPdf's own icon.
+  const starButton = (
+    <button
+      type="button"
+      aria-label={node.starred ? `Unstar ${displayName}` : `Star ${displayName}`}
+      className={`shrink-0 rounded p-1 transition-opacity hover:opacity-100 ${
+        node.starred ? '' : isTouch ? 'opacity-70' : 'opacity-0 group-hover:opacity-100'
+      }`}
+      style={{ color: node.starred ? 'var(--accent-link)' : 'var(--text-muted)' }}
+      onClick={(e) => {
+        e.stopPropagation()
+        toggleStarred(node.id)
+      }}
+    >
+      <Star size={13} fill={node.starred ? 'currentColor' : 'none'} />
+    </button>
+  )
 
   return (
     <div
@@ -350,8 +414,8 @@ export function FileTreeNode({ node, depth, parentId }: { node: FileTreeNodeType
         {isPdf && <FileText size={13} className="shrink-0" />}
         <span className="truncate">{displayName}</span>
       </button>
-      {renameButton}
-      {deleteButton}
+      {starButton}
+      {actionsMenu}
     </div>
   )
 }

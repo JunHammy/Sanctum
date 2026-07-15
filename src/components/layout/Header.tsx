@@ -115,7 +115,12 @@ export function Header({ onOpenSearch, onOpenCommandPalette }: HeaderProps) {
   return (
     <header
       className="flex items-center gap-2 border-b px-3 py-3 sm:px-4"
-      style={{ borderColor: 'var(--border)' }}
+      // Explicit background (not just inherited from body) — harmless
+      // everywhere AppShell already keeps this structurally above the
+      // scroll area with no overlap, but load-bearing on routes that make
+      // this sticky (VaultManagerRoute), where scrolled content would
+      // otherwise show through an unstyled-transparent header.
+      style={{ borderColor: 'var(--border)', background: 'var(--bg-primary)' }}
     >
       <div className="flex shrink-0 items-center gap-2 sm:gap-3">
         <button

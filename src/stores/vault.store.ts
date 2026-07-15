@@ -67,6 +67,10 @@ interface VaultState {
   // relative to sibling folders, a file only relative to sibling files.
   // Cross-folder moves remain moveNode's job, not this one.
   reorderNode: (draggedId: string, targetId: string, side: 'before' | 'after') => Promise<void>
+  // Flips a note/PDF's starred flag (Drive `properties.starred`) — a
+  // discrete click, not a continuous gesture like reorderNode, so no
+  // debounce: every toggle goes straight to Drive.
+  toggleStarred: (id: string) => Promise<void>
   deleteNode: (id: string) => Promise<void>
   // Called on sign-out — a different Google account has an entirely
   // different Drive, so a stale vaults list/activeVaultId from the
@@ -114,13 +118,14 @@ function buildFileTree(files: DriveFile[], rootId: string): FileTreeNode[] {
 
     for (const item of children) {
       const order = item.properties?.order !== undefined ? Number(item.properties.order) : undefined
+      const starred = item.properties?.starred === 'true'
       if (item.mimeType === FOLDER_MIME) {
         if (item.name === '.vault') continue // hidden config folder, MP §7
         nodes.push({ id: item.id, name: item.name, type: 'folder', children: build(item.id), order })
       } else if (item.name.endsWith('.md')) {
-        nodes.push({ id: item.id, name: item.name, type: 'file', modifiedTime: item.modifiedTime, order })
+        nodes.push({ id: item.id, name: item.name, type: 'file', modifiedTime: item.modifiedTime, order, starred })
       } else {
-        nodes.push({ id: item.id, name: item.name, type: 'attachment', mimeType: item.mimeType, order })
+        nodes.push({ id: item.id, name: item.name, type: 'attachment', mimeType: item.mimeType, order, starred })
       }
     }
 
@@ -158,6 +163,37 @@ export function computeVaultStats(files: DriveFile[], vaultId: string): VaultSta
 
   walk(vaultId)
   return { noteCount, lastModified }
+}
+
+export interface StarredFile {
+  id: string
+  name: string
+  mimeType: string
+  vaultId: string
+  vaultName: string
+}
+
+// Same "walk down from each known vault root" shape as computeVaultStats —
+// no separate "walk up from a leaf to find its vault" traversal needed,
+// since every vault's own root id is already known up front. Used by the
+// Vaults page to show a cross-vault Starred section without switching into
+// each vault first.
+export function computeStarredFiles(files: DriveFile[], vaults: VaultMeta[]): StarredFile[] {
+  const childrenByParent = groupByParent(files)
+  const results: StarredFile[] = []
+
+  function walk(parentId: string, vaultId: string, vaultName: string) {
+    for (const item of childrenByParent.get(parentId) ?? []) {
+      if (item.mimeType === FOLDER_MIME) {
+        if (item.name !== '.vault') walk(item.id, vaultId, vaultName)
+      } else if (item.properties?.starred === 'true') {
+        results.push({ id: item.id, name: item.name, mimeType: item.mimeType, vaultId, vaultName })
+      }
+    }
+  }
+
+  for (const vault of vaults) walk(vault.id, vault.id, vault.name)
+  return results
 }
 
 // Inserts a node directly into the in-memory tree, no re-fetch — used by
@@ -689,6 +725,32 @@ export const useVaultStore = create<VaultState>()((set, get) => ({
         })()
       }, REORDER_PERSIST_DELAY_MS),
     )
+  },
+
+  toggleStarred: async (id) => {
+    const { fileTree, rootFolderId } = get()
+    const node = findNode(fileTree, id)
+    if (!node || node.type === 'folder' || !rootFolderId) return
+    const nextStarred = !node.starred
+
+    // Optimistic, same as reorderNode — but no debounce, since starring is
+    // one discrete click, not a continuous gesture that can rapid-fire
+    // several requests in a row.
+    const previousTree = fileTree
+    const nextTree = replaceNode(fileTree, id, (n) => ({ ...n, starred: nextStarred }))
+    set({ fileTree: nextTree })
+    cacheService.setCachedFileTree(rootFolderId, nextTree) // fire-and-forget write-through
+
+    try {
+      await driveService.setFileStarred(id, nextStarred)
+    } catch (err) {
+      if (get().fileTree === nextTree) {
+        set({ fileTree: previousTree })
+        cacheService.setCachedFileTree(rootFolderId, previousTree)
+      }
+      logError('vault.toggleStarred', err)
+      useToastStore.getState().show(toUserMessage(err, 'Could not update starred status.'), 'error')
+    }
   },
 
   // Trashes via Drive (recoverable from Drive's own Trash, not a permanent

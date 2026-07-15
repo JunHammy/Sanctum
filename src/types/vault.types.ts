@@ -15,6 +15,10 @@ export interface FileTreeFile {
   type: 'file'
   modifiedTime?: string
   order?: number
+  // Drive `properties.starred` custom property (see vault.store.ts's
+  // buildFileTree/toggleStarred and drive-api.ts's setFileStarred) — a
+  // leaf-item concept, so folders never carry this field.
+  starred?: boolean
 }
 
 export interface FileTreeAttachment {
@@ -23,6 +27,7 @@ export interface FileTreeAttachment {
   type: 'attachment'
   mimeType: string
   order?: number
+  starred?: boolean
 }
 
 export type FileTreeNode = FileTreeFolder | FileTreeFile | FileTreeAttachment

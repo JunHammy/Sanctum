@@ -94,6 +94,18 @@ body {
   letter-spacing: 0.01em;
 }
 
+/* VaultManagerRoute doesn't go through AppShell at all (no Sidebar to keep
+   independently scrollable next to it), so it opts back into ordinary,
+   native page scroll instead of the fixed-shell-plus-inner-scroll pattern
+   every AppShell-based route uses — toggled via this class (added/removed
+   on mount/unmount, see that route's own effect) rather than touching the
+   base `body` rule above, which every note view still depends on. `html`
+   stays locked; a 100%-height `body` with its own overflow can scroll
+   independently of that regardless. */
+body.allow-page-scroll {
+  overflow-y: auto;
+}
+
 :root[data-theme="light"] body {
   font-weight: 400;
   letter-spacing: normal;

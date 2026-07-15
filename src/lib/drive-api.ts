@@ -112,6 +112,18 @@ export async function setFileOrder(token: string, fileId: string, order: number)
   })
 }
 
+// Same one-key-PATCH shape as setFileOrder, for the sidebar's star toggle.
+// `null` deletes the properties key entirely on unstar (Drive API's
+// documented way to remove one) rather than leaving a stale `starred:
+// "false"` sitting on every ever-starred file forever.
+export async function setFileStarred(token: string, fileId: string, starred: boolean): Promise<DriveFile> {
+  return request(token, `${DRIVE_API_BASE}/files/${fileId}?fields=id,name,mimeType,properties`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ properties: { starred: starred ? 'true' : null } }),
+  })
+}
+
 export async function readFile(token: string, fileId: string): Promise<string> {
   const res = await fetch(`${DRIVE_API_BASE}/files/${fileId}?alt=media`, {
     headers: { Authorization: `Bearer ${token}` },
