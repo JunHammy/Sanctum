@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type DragEvent } from 'react'
-import { Plus } from 'lucide-react'
+import { Plus, Trash2, X } from 'lucide-react'
 import { splitIntoBlocks, joinBlocks, createEmptyBlock, type Block as BlockType } from '../../lib/blocks/split-blocks'
 import { consumePendingScrollAnchor } from '../../lib/scroll-to-line'
 import { Block } from './Block'
+import { ConfirmModal } from '../common/ConfirmModal'
 
 const EDIT_MODE_SELECTOR = '[data-line]'
 
@@ -34,6 +35,15 @@ export function BlockEditor({ value, onChange }: BlockEditorProps) {
     return split.length > 0 ? split : [createEmptyBlock()]
   })
   const [activeId, setActiveId] = useState<string | null>(null)
+  // Multi-block selection — mutually exclusive with activeId, both
+  // directions: activating a block clears any selection (handleActivate
+  // below), and starting/extending a selection clears activeId
+  // (handleSelectClick). selectionAnchor is the index a shift-click range
+  // extends from, not necessarily the first block ever clicked — it follows
+  // whichever click most recently made the selection non-empty.
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [selectionAnchor, setSelectionAnchor] = useState<number | null>(null)
+  const [confirmBulkDeleteOpen, setConfirmBulkDeleteOpen] = useState(false)
   const [draggedId, setDraggedId] = useState<string | null>(null)
   const [dragOverId, setDragOverId] = useState<string | null>(null)
   const [dropPosition, setDropPosition] = useState<'above' | 'below' | null>(null)
@@ -142,6 +152,27 @@ export function BlockEditor({ value, onChange }: BlockEditorProps) {
     }
   }, [activeId])
 
+  // Same structural pattern as the activeId-gated effect above, but a
+  // separate effect rather than merged into it — selection and active-
+  // editing are mutually exclusive, so they never need to share a listener.
+  // Delete/Backspace opens a confirm rather than deleting immediately:
+  // losing several blocks at once via one stray keypress is a meaningfully
+  // higher-stakes mistake than the existing single-block delete (a
+  // deliberate click on that block's own Trash2 button, no confirm today).
+  useEffect(() => {
+    if (selectedIds.size === 0) return
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        setSelectedIds(new Set())
+        setSelectionAnchor(null)
+      } else if (e.key === 'Delete' || e.key === 'Backspace') {
+        setConfirmBulkDeleteOpen(true)
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [selectedIds])
+
   // Every handler below is built on the functional setState form (reading
   // the previous blocks from React, not from this closure) specifically so
   // each one can be wrapped in useCallback with an empty/stable dependency
@@ -153,11 +184,55 @@ export function BlockEditor({ value, onChange }: BlockEditorProps) {
   // re-ran a full markdown parse plus image resolution — on every single
   // keystroke typed into any one of them, which is what was showing up as
   // flicker while editing.
-  const commit = useCallback((next: BlockType[]) => setBlocks(next), [])
-
   const handleBlockChange = useCallback((id: string, rawText: string) => {
     setBlocks((prev) => prev.map((b) => (b.id === id ? { ...b, rawText } : b)))
   }, [])
+
+  // Wraps the raw setActiveId setter so activating a block for editing also
+  // clears any existing multi-selection — the two states are mutually
+  // exclusive (see selectedIds' own comment above).
+  const handleActivate = useCallback((id: string | null) => {
+    setActiveId(id)
+    setSelectedIds(new Set())
+    setSelectionAnchor(null)
+  }, [])
+
+  // Shift-click always recomputes a fresh contiguous range from the anchor
+  // (not additive to whatever was already selected) — standard file-manager
+  // convention. Ctrl/Cmd-click toggles just the one clicked block; the
+  // anchor moves to whichever click most recently made the selection
+  // non-empty, so a shift-click right after a ctrl-click extends from there.
+  const handleSelectClick = useCallback(
+    (id: string, index: number, isShift: boolean) => {
+      setActiveId(null)
+      if (isShift && selectionAnchor !== null) {
+        const [start, end] = [selectionAnchor, index].sort((a, b) => a - b)
+        setSelectedIds(new Set(blocks.slice(start, end + 1).map((b) => b.id)))
+        return
+      }
+      setSelectedIds((prev) => {
+        const next = new Set(prev)
+        if (next.has(id)) next.delete(id)
+        else next.add(id)
+        if (next.size === 1) setSelectionAnchor(index)
+        else if (next.size === 0) setSelectionAnchor(null)
+        return next
+      })
+    },
+    [blocks, selectionAnchor],
+  )
+
+  const handleBulkDelete = useCallback(() => {
+    setBlocks((prev) => {
+      const next = prev.filter((b) => !selectedIds.has(b.id))
+      // Same "always keep at least one block" invariant handleDeleteBlock
+      // enforces below.
+      return next.length > 0 ? next : [createEmptyBlock()]
+    })
+    setSelectedIds(new Set())
+    setSelectionAnchor(null)
+    setConfirmBulkDeleteOpen(false)
+  }, [selectedIds])
 
   const handleAddBlock = useCallback(
     (afterId?: string) => {
@@ -182,6 +257,8 @@ export function BlockEditor({ value, onChange }: BlockEditorProps) {
         return [...prev.slice(0, index + 1), positioned, ...prev.slice(index + 1)]
       })
       setActiveId(newBlock.id)
+      setSelectedIds(new Set())
+      setSelectionAnchor(null)
     },
     [],
   )
@@ -327,12 +404,60 @@ export function BlockEditor({ value, onChange }: BlockEditorProps) {
 
   return (
     <div className="flex flex-col" onDragOver={handleContainerDragOver}>
+      {selectedIds.size > 0 && (
+        <div
+          className="mb-2 flex items-center gap-3 self-start rounded-md border px-3 py-1.5 text-sm"
+          style={{ borderColor: 'var(--border)', background: 'var(--bg-secondary)', color: 'var(--text-secondary)' }}
+        >
+          <span>
+            {selectedIds.size} block{selectedIds.size === 1 ? '' : 's'} selected
+          </span>
+          <button
+            type="button"
+            className="flex items-center gap-1 hover:opacity-80"
+            style={{ color: 'var(--error)' }}
+            onClick={() => setConfirmBulkDeleteOpen(true)}
+          >
+            <Trash2 size={14} />
+            Delete
+          </button>
+          <button
+            type="button"
+            aria-label="Clear selection"
+            className="flex items-center hover:opacity-80"
+            onClick={() => {
+              setSelectedIds(new Set())
+              setSelectionAnchor(null)
+            }}
+          >
+            <X size={14} />
+          </button>
+        </div>
+      )}
       {blocks.map((block, index) => (
-        <div key={block.id} data-block-id={block.id} data-line={block.startLine} className="group">
+        <div
+          key={block.id}
+          data-block-id={block.id}
+          data-line={block.startLine}
+          className="group"
+          onClickCapture={(e) => {
+            // Lets CodeMirror's own shift-click text-selection through
+            // untouched while this block is the one actively being edited
+            // — without this guard, shift-clicking to extend a text
+            // selection *inside* an active block would get hijacked into a
+            // block-level selection instead.
+            if (block.id === activeId) return
+            if (!e.shiftKey && !e.ctrlKey && !e.metaKey) return
+            e.preventDefault()
+            e.stopPropagation()
+            handleSelectClick(block.id, index, e.shiftKey)
+          }}
+        >
           <Block
             block={block}
             isActive={activeId === block.id}
-            onActivate={setActiveId}
+            isSelected={selectedIds.has(block.id)}
+            onActivate={handleActivate}
             onChange={handleBlockChange}
             onAddBelow={handleAddBlock}
             onDelete={handleDeleteBlock}
@@ -358,11 +483,23 @@ export function BlockEditor({ value, onChange }: BlockEditorProps) {
         // above this one with very little visual separation.
         className="mt-8 flex items-center gap-1.5 self-start rounded-md border px-2.5 py-1.5 text-sm hover:opacity-80"
         style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }}
-        onClick={() => commit([...blocks, createEmptyBlock()])}
+        // handleAddBlock (same handler each block's own "+" uses) rather
+        // than a separate direct setBlocks call — it already activates the
+        // new block for editing, which this button was missing entirely
+        // (confirmed real gap from testing: had to click into the new
+        // block a second time after adding it).
+        onClick={() => handleAddBlock()}
       >
         <Plus size={14} />
         Add block
       </button>
+      <ConfirmModal
+        isOpen={confirmBulkDeleteOpen}
+        title="Delete blocks"
+        message={`Delete ${selectedIds.size} selected block${selectedIds.size === 1 ? '' : 's'}? This can't be undone directly, though the note's own undo history still covers it.`}
+        onConfirm={handleBulkDelete}
+        onClose={() => setConfirmBulkDeleteOpen(false)}
+      />
     </div>
   )
 }

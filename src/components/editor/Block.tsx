@@ -29,6 +29,7 @@ import type { Block as BlockType } from '../../lib/blocks/split-blocks'
 interface BlockProps {
   block: BlockType
   isActive: boolean
+  isSelected: boolean
   onActivate: (id: string) => void
   onChange: (id: string, rawText: string) => void
   onAddBelow: (id: string) => void
@@ -67,6 +68,7 @@ const EMPTY_PLACEHOLDER = '<p class="opacity-40">Click to type…</p>'
 export const Block = memo(function Block({
   block,
   isActive,
+  isSelected,
   onActivate,
   onChange,
   onAddBelow,
@@ -209,6 +211,10 @@ export const Block = memo(function Block({
         borderTop: `2px solid ${dropIndicator === 'above' ? 'var(--accent-link)' : 'transparent'}`,
         borderBottom: `2px solid ${dropIndicator === 'below' ? 'var(--accent-link)' : 'transparent'}`,
         opacity: isDragging ? 0.4 : 1,
+        // Same color-mix-based translucent-tint idiom markdown.css's
+        // heading-flash keyframe already uses for a temporary/state-driven
+        // highlight, reused here for a persistent one instead.
+        background: isSelected ? 'color-mix(in srgb, var(--accent-link) 15%, transparent)' : undefined,
       }}
     >
       {/* Touch has no hover state to reveal these on, and native HTML5 drag

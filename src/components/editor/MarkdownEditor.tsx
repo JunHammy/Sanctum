@@ -81,6 +81,11 @@ export function MarkdownEditor({ value, onChange, bare, language = 'markdown' }:
       ],
       parent: containerRef.current,
     })
+    // Mounting alone never grabs actual keyboard focus — without this,
+    // activating a block (e.g. clicking "Add block") left focus wherever
+    // it already was (the button just clicked), so typing immediately
+    // went nowhere until the editor was clicked into a second time.
+    view.focus()
 
     return () => view.destroy()
     // eslint-disable-next-line react-hooks/exhaustive-deps -- deliberately mount-once; see this component's own top comment on the key-forces-remount contract callers must uphold
