@@ -65,6 +65,8 @@ export function Sidebar({ nodes, isLoading, error, onRefresh }: SidebarProps) {
   const expandedFolderIds = useUIStore((s) => s.expandedFolderIds)
   const expandAll = useUIStore((s) => s.expandAll)
   const collapseAll = useUIStore((s) => s.collapseAll)
+  const pendingRevealId = useUIStore((s) => s.pendingRevealId)
+  const setPendingRevealId = useUIStore((s) => s.setPendingRevealId)
   const createNote = useVaultStore((s) => s.createNote)
   const createFolder = useVaultStore((s) => s.createFolder)
   const uploadPdf = useVaultStore((s) => s.uploadPdf)
@@ -152,6 +154,29 @@ export function Sidebar({ nodes, isLoading, error, onRefresh }: SidebarProps) {
       document.removeEventListener('keydown', handleEscape)
     }
   }, [vaultMenuOpen])
+
+  // Consumes a Breadcrumbs.tsx reveal — by the time this fires, the target
+  // folder's own ancestor chain has already been added to expandedFolderIds
+  // (revealFolders, called before setPendingRevealId), but that folder's
+  // row doesn't exist in the DOM yet until React commits the newly-expanded
+  // AnimatePresence branches. A fixed short delay (just past the 0.15s
+  // duration every folder already animates open with) is enough here —
+  // unlike scroll-to-line.ts's heavier MutationObserver-based settle
+  // detector (built for arbitrary async note-content loading), every
+  // ancestor here expands in one known, fixed-duration animation, so a
+  // timeout is simpler and sufficient rather than over-engineered.
+  useEffect(() => {
+    if (!pendingRevealId) return
+    const id = pendingRevealId
+    const timer = setTimeout(() => {
+      const el = document.getElementById(`sidebar-node-${id}`)
+      el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      el?.classList.add('sidebar-flash')
+      setTimeout(() => el?.classList.remove('sidebar-flash'), 2000)
+      setPendingRevealId(null)
+    }, 200)
+    return () => clearTimeout(timer)
+  }, [pendingRevealId, setPendingRevealId])
 
   // VS Code-style drag-to-resize — native mousemove/mouseup rather than
   // HTML5 drag-and-drop (that API is built for dragging *data*, e.g. moving

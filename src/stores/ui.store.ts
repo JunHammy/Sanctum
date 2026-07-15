@@ -18,6 +18,12 @@ interface UIState {
   // component identity, and so "expand/collapse all" can act on every
   // folder from one place instead of needing to reach into each instance.
   expandedFolderIds: Set<string>
+  // Set by Breadcrumbs.tsx right after revealFolders/openSidebar below, and
+  // cleared once Sidebar.tsx has scrolled that row into view — same "set an
+  // intent, let whichever component can act on it consume it" shape
+  // note.store's pendingScrollAnchor already establishes for the analogous
+  // "scroll something into view once it exists in the DOM" problem.
+  pendingRevealId: string | null
   toggleSidebar: () => void
   openSidebar: () => void
   closeSidebar: () => void
@@ -26,6 +32,13 @@ interface UIState {
   toggleFolder: (id: string) => void
   expandAll: (folderIds: string[]) => void
   collapseAll: () => void
+  // Adds without removing — unlike expandAll (replaces the whole set) or
+  // calling toggleFolder per-id (which would collapse an already-open
+  // ancestor instead of guaranteeing it stays open). Used to reveal a
+  // breadcrumb folder's full ancestor chain without disturbing whatever
+  // else the user already had expanded elsewhere in the tree.
+  revealFolders: (folderIds: string[]) => void
+  setPendingRevealId: (id: string | null) => void
 }
 
 // Tablets and up (Tailwind's sm breakpoint, 640px) start with the sidebar
@@ -42,6 +55,7 @@ export const useUIStore = create<UIState>()(
       theme: 'dark',
       sidebarWidth: DEFAULT_SIDEBAR_WIDTH,
       expandedFolderIds: new Set(),
+      pendingRevealId: null,
       toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
       openSidebar: () => set({ sidebarOpen: true }),
       closeSidebar: () => set({ sidebarOpen: false }),
@@ -57,6 +71,13 @@ export const useUIStore = create<UIState>()(
         }),
       expandAll: (folderIds) => set({ expandedFolderIds: new Set(folderIds) }),
       collapseAll: () => set({ expandedFolderIds: new Set() }),
+      revealFolders: (folderIds) =>
+        set((s) => {
+          const next = new Set(s.expandedFolderIds)
+          folderIds.forEach((id) => next.add(id))
+          return { expandedFolderIds: next }
+        }),
+      setPendingRevealId: (id) => set({ pendingRevealId: id }),
     }),
     {
       // Theme preference should survive browser restarts (unlike the auth

@@ -203,6 +203,7 @@ export function FileTreeNode({ node, depth, parentId }: { node: FileTreeNodeType
     return (
       <div>
         <div
+          id={`sidebar-node-${node.id}`}
           className="group flex w-full items-center gap-1 rounded px-1 hover:opacity-80"
           style={{
             background: dragOverMode === 'into' ? 'var(--bg-tertiary)' : undefined,
@@ -344,6 +345,7 @@ export function FileTreeNode({ node, depth, parentId }: { node: FileTreeNodeType
 
   return (
     <div
+      id={`sidebar-node-${node.id}`}
       className="group flex w-full items-center gap-1 rounded px-1 hover:opacity-80"
       style={{
         // Highlight lives on the row itself (not the inner button) so it

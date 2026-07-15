@@ -1,4 +1,4 @@
-import type { FileTreeNode } from '../types/vault.types'
+import type { FileTreeFolder, FileTreeNode } from '../types/vault.types'
 
 // Matches notes and attachments (e.g. a PDF tab) — folders excluded, since
 // folders are never tabs and never need a display-name lookup by id.
@@ -62,6 +62,26 @@ export function collectFileIds(node: FileTreeNode): string[] {
   if (node.type === 'file' || node.type === 'attachment') return [node.id]
   if (node.type !== 'folder') return []
   return node.children.flatMap(collectFileIds)
+}
+
+// Ordered root-to-parent chain of folders containing `id` — [] for a
+// root-level item (no folder segments to show). Used by Breadcrumbs.tsx.
+// The inner walk() returns null for "not found in this subtree" rather
+// than [] — an id found as a *direct* child of a folder legitimately
+// returns an empty path from that point, which would otherwise be
+// indistinguishable from "not found here at all."
+export function findPathToNode(nodes: FileTreeNode[], id: string): FileTreeFolder[] {
+  function walk(items: FileTreeNode[]): FileTreeFolder[] | null {
+    for (const node of items) {
+      if (node.id === id) return []
+      if (node.type === 'folder') {
+        const found = walk(node.children)
+        if (found !== null) return [node, ...found]
+      }
+    }
+    return null
+  }
+  return walk(nodes) ?? []
 }
 
 // True if `descendantId` sits anywhere inside `ancestorId`'s own subtree —

@@ -106,6 +106,15 @@ body.allow-page-scroll {
   overflow-y: auto;
 }
 
+/* Brief highlight for a sidebar row revealed via Breadcrumbs.tsx — reuses
+   markdown.css's existing @keyframes heading-flash rather than redefining
+   the same animation, just without that class's `.markdown-body` ancestor
+   requirement (the sidebar tree isn't inside one). */
+.sidebar-flash {
+  animation: heading-flash 2s ease-in;
+  border-radius: 4px;
+}
+
 :root[data-theme="light"] body {
   font-weight: 400;
   letter-spacing: normal;

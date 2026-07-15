@@ -7,6 +7,7 @@ import { toggleReadModePreservingScroll } from '../../lib/scroll-to-line'
 import { loadBlockEditor } from '../../lib/prefetch-block-editor'
 import { MarkdownReader } from './MarkdownReader'
 import { LoadingSpinner } from '../common/LoadingSpinner'
+import { Breadcrumbs } from './Breadcrumbs'
 import { PropertiesPanel } from './PropertiesPanel'
 import { TableOfContents } from './TableOfContents'
 import { BacklinksPanel } from './BacklinksPanel'
@@ -65,6 +66,7 @@ export function NoteView({ fileId }: { fileId: string }) {
 
   return (
     <div>
+      <Breadcrumbs fileId={fileId} />
       <PropertiesPanel />
       <TableOfContents />
       {isReadMode ? (
