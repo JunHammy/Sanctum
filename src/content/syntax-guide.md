@@ -2,6 +2,11 @@
 
 Sanctum notes are plain markdown, plus a handful of extra conventions for linking, tagging, and embedding content. Everything on this page is rendered live through the exact same pipeline every note uses — nothing here is a mockup. Every example below shows the raw markdown source first, then how it actually renders.
 
+Raw HTML in a note's source is also passed through as-is (a stray `<br>` or `<sub>text</sub>` works), and bare URLs (`https://example.com` typed with no brackets) auto-link on their own.
+
+> [!NOTE] Smart typography
+> Straight quotes, `--`, `---`, and `...` typed in prose are automatically swapped for curly quotes, en/em dashes, and a real ellipsis. If you're pasting text where that substitution isn't wanted (code-like content outside a fence, for instance), keep it inside a fenced or inline code span — that's exempt.
+
 ## Basic formatting
 
 ```markdown
@@ -9,6 +14,8 @@ Sanctum notes are plain markdown, plus a handful of extra conventions for linkin
 ```
 
 Rendered: **Bold**, *italic*, ~~strikethrough~~, `inline code`, and ==highlighted text== — useful for flagging something to come back to.
+
+A single line break inside a paragraph does *not* start a new line when rendered — leave a blank line between paragraphs, same as standard markdown everywhere else.
 
 ### Lists
 
@@ -36,6 +43,8 @@ Rendered:
 - [ ] An unchecked task
 - [x] A completed task
 
+Task checkboxes are click-toggleable in Read mode visually, but that's not a saved edit — it reverts the next time the note re-renders. To actually check something off for good, do it in Edit mode.
+
 ## Links between notes
 
 Sanctum uses **wikilinks** to connect notes to each other, the same convention Obsidian and Roam use:
@@ -47,12 +56,14 @@ Sanctum uses **wikilinks** to connect notes to each other, the same convention O
 [[Note Title^block-id]]
 ```
 
-- `[[Note Title]]` links to a note by its exact title (case-insensitive, and a partial match works too if nothing else matches).
+- `[[Note Title]]` links to a note by its exact title. Resolution tries, in order: an exact case-sensitive match, then case-insensitive, then falls back to the first note whose filename *starts with* that text (a prefix match, not a search for the text anywhere in the name).
 - `[[Note Title|display text]]` links the same way but shows different text.
 - `[[Note Title#Heading]]` jumps straight to a specific heading in that note.
-- `[[Note Title^block-id]]` jumps to a specific paragraph — see [[Block references]] below for how to tag one.
+- `[[Note Title^block-id]]` jumps to a specific paragraph — see [[Block references]] below for how to tag one. A link can target a heading *or* a block id, not both at once.
 
-A link to a note that doesn't exist (yet) still renders, just as an unresolved link — clicking it does nothing until you create a note with that title. These examples aren't shown as live links on this page since they'd point at notes that don't exist in *your* vault specifically.
+A link to a note that doesn't exist (yet) still renders — it just does nothing when clicked until you create a note with that title (there's currently no distinct visual style for an unresolved link, so it looks the same either way). These examples aren't shown as live links on this page since they'd point at notes that don't exist in *your* vault specifically. Note titles are matched by filename alone, not by folder — two notes with the same name in different folders can't both be linked to unambiguously.
+
+`#Heading` matches by the heading's own text, lowercased and stripped of punctuation. If a note reuses the exact same heading text twice, only the first one is reachable by `#Heading` — give repeated headings distinct text if you need to link to more than one of them.
 
 ## Tags
 
@@ -94,7 +105,7 @@ Supported types, and how they render:
 > [!DANGER] Heads up
 > Something that could genuinely break if you're not careful.
 
-Full list: `NOTE`, `TIP`/`SUCCESS`, `WARNING`/`TODO`, `DANGER`/`IMPORTANT`, `QUESTION`/`EXAMPLE`/`ABSTRACT`.
+Full list with a distinct accent color: `NOTE`, `TIP`/`SUCCESS`, `WARNING`/`TODO`, `DANGER`/`IMPORTANT`, `QUESTION`/`EXAMPLE`/`ABSTRACT`. The type word itself isn't actually restricted to this list — `[!ANYTHING]` still renders as a real, working callout box, it just falls back to the same default color `NOTE` uses if it isn't one of the ones above.
 
 ## Code blocks
 
@@ -115,6 +126,8 @@ function greet(name: string): string {
   return `Hello, ${name}!`
 }
 ```
+
+Real syntax coloring is available for `bash`, `css`, `javascript`, `json`, `markdown`, `python`, `typescript`, `xml`/`html`, and `yaml` (plus their common aliases, like `sh`, `ts`, `py`, `yml`). A language outside that list — or no language at all — still renders as a code block, just without colored syntax.
 
 ## Runnable code
 
@@ -242,9 +255,19 @@ This is the paragraph you want to reference later. ^my-block-id
 
 The id has to trail the actual text on the same line, with a space before it — not sit alone on its own line above the paragraph. Once tagged, `[[Note^my-block-id]]` (a link) or `![[Note^my-block-id]]` (an embed, see below) can target just that one block.
 
+A runnable `python` or `javascript` fence can be tagged the same way, but on its **opening** fence line instead of trailing a paragraph:
+
+````markdown
+```python ^intro-imports
+import numpy as np
+```
+````
+
+The space before `^` is required there too — `` ```python^id `` with no space is silently *not* recognized (the whole thing is read as one invalid language name instead, and that block quietly loses both syntax highlighting and its Run button). This tagging currently only works on `python`/`javascript` fences — it doesn't do anything on `mermaid`/`plotly`/`chartjs` fences.
+
 ## Embedding content from another note
 
-`![[Note Title]]` embeds an entire other note's content inline, right where you write it — useful for pulling a shared reference into several notes without copy-pasting. Scoped variants work too:
+`![[Note Title]]` embeds an entire other note's content inline, right where you write it — useful for pulling a shared reference into several notes without copy-pasting. It has to sit alone on its own line, not mixed into a sentence. Scoped variants work too:
 
 ```markdown
 ![[Note Title]]
@@ -255,9 +278,11 @@ The id has to trail the actual text on the same line, with a space before it —
 
 The `#Heading1..#Heading2` form embeds everything from the first heading through the end of whatever the second one covers — handy for pulling in a whole run of sections at once.
 
+`![[Note^my-block-id]]` targeting a tagged `python`/`javascript` fence (see above) embeds just that one runnable cell — code and its last-saved output together, if it's been run. An embedded cell is always shown read-only (no Run button) even though the source note's own copy is fully live; re-run it from the source note if you need fresh output. Embedded content is fetched once and cached for the rest of the session — editing the source note afterward won't update an embed already on screen until you reload.
+
 ## Diagrams and charts
 
-Fenced code blocks with the right language render as live diagrams instead of plain code:
+Fenced code blocks with the right language render as live diagrams instead of plain code. Unlike `python`/`javascript` fences, these don't support `^block-id` tagging or single-cell embedding — leave that off a `mermaid`/`plotly`/`chartjs` fence's opening line, it won't do anything useful there.
 
 ````markdown
 ```mermaid
@@ -327,7 +352,7 @@ Rendered live below — `data` and `layout` map directly onto Plotly's own `Plot
 ![alt text](filename.png)
 ```
 
-Images use plain markdown syntax, resolved against your vault's `assets` folder automatically, no need to write a full path. YouTube links, audio files, and PDFs work the same `![]()` syntax; Sanctum detects what it's linking to and renders the right kind of embed (video player, audio player, or PDF preview) instead of a broken image icon.
+Images use plain markdown syntax and are matched by filename alone anywhere in your vault (not just an `assets` folder specifically) — no need to write a full path, just the filename. YouTube links, audio files, and PDFs work the same `![]()` syntax; Sanctum detects what it's linking to and renders the right kind of embed (video player, audio player, or PDF preview) instead of a broken image icon. A link title in the parentheses (`![alt](file.png "a title")`) isn't supported — leave it off, or the media type detection can miss and it'll fall back to a plain broken image.
 
 ## Note properties (frontmatter)
 
@@ -340,6 +365,8 @@ tags: [project, reference]
 status: in-progress
 ---
 ```
+
+The opening `---` has to be the very first thing in the file — no blank line, no title, nothing above it. If there's no matching closing `---`, none of it is treated as frontmatter at all; it just renders as ordinary note text instead.
 
 ## Finding your way around
 
