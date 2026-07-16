@@ -68,21 +68,26 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* AppShell's own root div constrains itself to h-screen/overflow-hidden,
+/* AppShell's own root div constrains itself to h-dvh/overflow-hidden,
    but html/body themselves were never locked to the viewport — so if a
    long note's content is even momentarily taller than the viewport during
    load (before that inner containment settles), the whole *window* scrolls
    too, a second scrollbar flickering in and out alongside the note's own
    content-pane scrollbar. Locking html/body to the viewport height with
    overflow hidden means only the intentionally-scrollable inner panes
-   (sidebar, note content) can ever show a scrollbar, full stop. */
+   (sidebar, note content) can ever show a scrollbar, full stop.
+   100dvh, not 100% — confirmed real mobile bug: a plain percentage height
+   on the root inherits the same static, worst-case viewport assumption
+   `vh` units use on iOS Safari, so this needs to track the live viewport
+   the same way AppShell's own h-dvh now does, or the two would drift out
+   of sync with each other again. */
 html {
-  height: 100%;
+  height: 100dvh;
   overflow: hidden;
 }
 
 body {
-  height: 100%;
+  height: 100dvh;
   overflow: hidden;
   margin: 0;
   background: var(--bg-primary);

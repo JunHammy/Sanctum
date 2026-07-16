@@ -7,7 +7,6 @@ import { QuickSwitcher } from '../search/QuickSwitcher'
 import { SearchModal } from '../search/SearchModal'
 import { CommandPalette } from '../common/CommandPalette'
 import { useKeyboardShortcut } from '../../hooks/useKeyboard'
-import { useEdgeSwipeToOpenSidebar } from '../../hooks/useEdgeSwipeToOpenSidebar'
 import { loadBlockEditor } from '../../lib/prefetch-block-editor'
 import { loadKatex } from '../../lib/prefetch-katex'
 import { useNoteStore } from '../../stores/note.store'
@@ -30,7 +29,14 @@ export function AppShell({ fileTree, isLoading, error, onRefresh, children }: Ap
   const [searchOpen, setSearchOpen] = useState(false)
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
 
-  useEdgeSwipeToOpenSidebar()
+  // No edge-swipe-to-open here (deliberately dropped, not an oversight) —
+  // a rightward swipe starting at the left edge is iOS Safari's own native
+  // back-navigation gesture. Fighting a system-level gesture recognizer
+  // with preventDefault is unreliable (Safari can still half-trigger its
+  // own back animation) and, worse, silently steals real "go back" intent
+  // from the user whenever it does work. Swipe-to-close (Sidebar.tsx) is
+  // the opposite direction and not edge-anchored, so it doesn't have this
+  // problem and stays; opening is the hamburger button only.
 
   useKeyboardShortcut('o', () => setQuickSwitcherOpen(true), { ctrl: true })
   useKeyboardShortcut('f', () => setSearchOpen(true), { ctrl: true, shift: true })
@@ -68,7 +74,21 @@ export function AppShell({ fileTree, isLoading, error, onRefresh, children }: Ap
   }, [])
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden">
+    // h-dvh, not h-screen (100vh) — confirmed real bug via mobile testing:
+    // 100vh on iOS Safari is fixed to the *largest* possible viewport (as if
+    // the URL bar were already collapsed), so with html/body locked to
+    // overflow:hidden (see globals.css), any time the actual visible area
+    // was smaller than that — the URL bar showing, or especially the
+    // on-screen keyboard opening while editing a block — the fixed-height
+    // shell no longer matched the real viewport. iOS additionally tries to
+    // pan the page to keep a focused input above the keyboard, which shifted
+    // the *whole* shell (Header included) out of view with no way to
+    // scroll back to it, since overflow:hidden blocks exactly that. dvh
+    // tracks the actual live viewport instead of a static worst-case
+    // assumption, so the shell now genuinely shrinks to fit (keyboard,
+    // URL bar, or otherwise) rather than needing the browser to pan around
+    // a shell that no longer fits.
+    <div className="flex h-dvh flex-col overflow-hidden">
       <Header onOpenSearch={() => setSearchOpen(true)} onOpenCommandPalette={() => setCommandPaletteOpen(true)} />
       <div className="flex flex-1 overflow-hidden">
         <Sidebar nodes={fileTree} isLoading={isLoading} error={error} onRefresh={onRefresh} />

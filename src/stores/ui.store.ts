@@ -48,6 +48,28 @@ function getInitialSidebarOpen(): boolean {
   return window.innerWidth >= 640
 }
 
+// Sidebar.tsx's mount/unmount is wrapped in Framer Motion's AnimatePresence
+// (a 0.18s slide), which only plays cleanly if `sidebarOpen` doesn't flip
+// again before that animation finishes. Before mobile swipe gestures
+// existed, the only way to toggle this was one deliberate tap on the
+// hamburger button — realistically never fast enough to matter. Swiping
+// made a rapid open-then-close (or the reverse) physically easy to trigger
+// by accident — confirmed via testing as a real bug: a new sidebar instance
+// mounting while the previous one was still mid-exit left two overlapping
+// copies of the panel visible at once. A short cooldown, slightly longer
+// than the animation's own duration, is what closes that window — not a
+// general-purpose debounce, just enough to guarantee one transition always
+// finishes before the next is allowed to start.
+const SIDEBAR_TOGGLE_COOLDOWN_MS = 220
+let lastSidebarToggleAt = 0
+
+function canToggleSidebar(): boolean {
+  const now = Date.now()
+  if (now - lastSidebarToggleAt < SIDEBAR_TOGGLE_COOLDOWN_MS) return false
+  lastSidebarToggleAt = now
+  return true
+}
+
 export const useUIStore = create<UIState>()(
   persist(
     (set) => ({
@@ -56,9 +78,18 @@ export const useUIStore = create<UIState>()(
       sidebarWidth: DEFAULT_SIDEBAR_WIDTH,
       expandedFolderIds: new Set(),
       pendingRevealId: null,
-      toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
-      openSidebar: () => set({ sidebarOpen: true }),
-      closeSidebar: () => set({ sidebarOpen: false }),
+      toggleSidebar: () => {
+        if (!canToggleSidebar()) return
+        set((s) => ({ sidebarOpen: !s.sidebarOpen }))
+      },
+      openSidebar: () => {
+        if (!canToggleSidebar()) return
+        set({ sidebarOpen: true })
+      },
+      closeSidebar: () => {
+        if (!canToggleSidebar()) return
+        set({ sidebarOpen: false })
+      },
       toggleTheme: () => set((s) => ({ theme: s.theme === 'dark' ? 'light' : 'dark' })),
       setSidebarWidth: (width) =>
         set({ sidebarWidth: Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, width)) }),

@@ -291,9 +291,18 @@ export function FileTreeNode({ node, depth, parentId }: { node: FileTreeNodeType
           {swipeDeleteAction}
           {/* Sliding layer — carries the row's actual content plus an
               opaque background, so it fully hides swipeDeleteAction behind
-              it until dragged left far enough to reveal it. */}
+              it until dragged left far enough to reveal it. `relative`
+              (not the default `static`) is load-bearing, not decorative:
+              CSS always paints a `position: absolute` element (the delete
+              button) above `static` siblings regardless of DOM order, so
+              without this the delete button rendered permanently on top of
+              — and ate every tap intended for — this row's own "⋯" menu,
+              even fully closed. Making this layer itself a positioned
+              element (no z-index needed) makes normal DOM-order stacking
+              apply instead, so it correctly paints over the delete button
+              whenever swipeX is 0. */}
           <div
-            className="flex w-full items-center gap-1 px-1 hover:opacity-80"
+            className="relative flex w-full items-center gap-1 px-1 hover:opacity-80"
             style={{
               background: dragOverMode === 'into' ? 'var(--bg-tertiary)' : 'var(--bg-secondary)',
               transform: `translateX(${swipeX}px)`,
@@ -477,9 +486,17 @@ export function FileTreeNode({ node, depth, parentId }: { node: FileTreeNodeType
       {swipeDeleteAction}
       {/* Sliding layer — carries the row's actual content plus an opaque
           background, so it fully hides swipeDeleteAction behind it until
-          dragged left far enough to reveal it. */}
+          dragged left far enough to reveal it. `relative` (not the default
+          `static`) is load-bearing, not decorative: CSS always paints a
+          `position: absolute` element (the delete button) above `static`
+          siblings regardless of DOM order, so without this the delete
+          button rendered permanently on top of — and ate every tap intended
+          for — this row's own star/"⋯" buttons, even fully closed. Making
+          this layer itself a positioned element (no z-index needed) makes
+          normal DOM-order stacking apply instead, so it correctly paints
+          over the delete button whenever swipeX is 0. */}
       <div
-        className="flex w-full items-center gap-1 px-1 hover:opacity-80"
+        className="relative flex w-full items-center gap-1 px-1 hover:opacity-80"
         style={{
           // Highlight lives on this sliding layer (not the inner button) so
           // it spans the full width, including behind the star/"⋯" icons —
