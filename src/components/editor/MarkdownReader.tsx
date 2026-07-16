@@ -132,6 +132,30 @@ export function MarkdownReader({ html, currentFileId }: MarkdownReaderProps) {
     setPendingScroll(null)
   }, [pendingScroll, activeNoteId, html, setPendingScroll])
 
+  // Task checkboxes render as real, clickable `<input type="checkbox">`s
+  // (taskLists is configured `enabled: true`, i.e. not `disabled`), but a
+  // click on one is otherwise purely a transient DOM mutation with no
+  // persistence — it reverts the instant this note next re-renders. This is
+  // what actually saves the tick: `data-task-line` (taskLinePlugin,
+  // markdown.service.ts) stamps each task item's own raw-source line, so a
+  // click here can flip that exact `[ ]`/`[x]` in rawBody and go through the
+  // same updateContent() pipeline every other edit already uses (undo
+  // snapshot, isDirty, autosave) — same shape as persistOutput above, just
+  // toggling one character instead of splicing in a whole serialized block.
+  function toggleTaskAt(line: number) {
+    const { rawBody, updateContent } = useNoteStore.getState()
+    const lines = rawBody.split('\n')
+    const target = lines[line]
+    if (target === undefined) return
+    const toggled = target.replace(
+      /^(\s*[-*+]\s+\[)( |x|X)(\])/,
+      (_match, pre: string, cur: string, post: string) => `${pre}${cur === ' ' ? 'x' : ' '}${post}`,
+    )
+    if (toggled === target) return
+    lines[line] = toggled
+    updateContent(lines.join('\n'))
+  }
+
   async function jumpToOtherNote(fileId: string, heading: string | null, blockId: string | null) {
     // Fetched fresh, not from the IndexedDB content cache — same reasoning
     // as SearchModal's result click: that cache only refreshes on the next
@@ -151,6 +175,13 @@ export function MarkdownReader({ html, currentFileId }: MarkdownReaderProps) {
   }
 
   function handleClick(e: MouseEvent<HTMLDivElement>) {
+    const checkbox = (e.target as HTMLElement).closest('.task-list-item-checkbox')
+    if (checkbox) {
+      const line = checkbox.closest('li[data-task-line]')?.getAttribute('data-task-line')
+      if (line !== null && line !== undefined) toggleTaskAt(Number(line))
+      return
+    }
+
     const link = (e.target as HTMLElement).closest('.wikilink')
     if (!link) return
     e.preventDefault()

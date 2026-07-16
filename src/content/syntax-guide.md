@@ -43,7 +43,7 @@ Rendered:
 - [ ] An unchecked task
 - [x] A completed task
 
-Task checkboxes are click-toggleable in Read mode visually, but that's not a saved edit — it reverts the next time the note re-renders. To actually check something off for good, do it in Edit mode.
+Task checkboxes are click-toggleable directly in Read mode — clicking one saves for real, the same as any other edit.
 
 ## Links between notes
 

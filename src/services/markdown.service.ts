@@ -12,6 +12,7 @@ import { chartPlugin } from '../lib/markdown-plugins/plugin-chart'
 import { codeBlocksPlugin } from '../lib/markdown-plugins/plugin-code-blocks'
 import { mediaEmbedPlugin } from '../lib/markdown-plugins/plugin-media-embed'
 import { sourceLinePlugin } from '../lib/markdown-plugins/plugin-source-line'
+import { taskLinePlugin } from '../lib/markdown-plugins/plugin-task-line'
 import { renderMath } from '../lib/katex-setup'
 import hljs from 'highlight.js/lib/core'
 import bash from 'highlight.js/lib/languages/bash'
@@ -89,6 +90,7 @@ function getRenderer(): MarkdownIt {
       .use(mark) // ==highlight==
       .use(footnote) // [^1]
       .use(taskLists, { enabled: true }) // - [ ] checkboxes
+      .use(taskLinePlugin) // data-task-line on each task item, for Read-mode toggle persistence
       .use(calloutPlugin) // > [!TYPE] Title
       .use(blockIdPlugin) // trailing ^block-id marker on a paragraph/list item
       .use(transclusionPlugin) // ![[Note]], ![[Note#Heading]], ![[Note^block-id]] — embeds a whole paragraph

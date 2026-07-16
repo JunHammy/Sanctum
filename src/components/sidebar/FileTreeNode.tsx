@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type TouchEvent as ReactTouchEvent } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ChevronRight, FileText, MoreHorizontal, Pencil, Star, Trash2 } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
@@ -50,60 +50,6 @@ export function FileTreeNode({ node, depth, parentId }: { node: FileTreeNodeType
   const isTouch = useIsTouchDevice()
   const { fileId: activeFileId } = useParams<{ fileId?: string }>()
 
-  // Swipe-left-to-reveal-delete, touch only — an alternative to the "⋯"
-  // menu's Delete entry, matching the swipe-to-delete convention most
-  // mobile note/mail apps already use. Unlike the discrete, end-of-gesture
-  // swipes elsewhere (useSwipeGesture.ts), this one needs to visually
-  // follow the finger as it drags (that's the whole point of a "reveal"
-  // interaction), so it tracks its own live offset here rather than using
-  // that shared hook. Only ever reveals Delete, not Star too — a starred
-  // file's star is already directly tappable at all times on a touch
-  // device (see starButton's own opacity-70 touch fallback below), so
-  // duplicating it behind a swipe as well would be redundant.
-  const SWIPE_DELETE_WIDTH = 64
-  const [swipeX, setSwipeX] = useState(0)
-  const [isRowSwiping, setIsRowSwiping] = useState(false)
-  const swipeStartRef = useRef<{ x: number; y: number; startSwipeX: number } | null>(null)
-
-  function handleRowTouchStart(e: ReactTouchEvent) {
-    if (!isTouch) return
-    // Stops this from also bubbling up into Sidebar.tsx's own panel-level
-    // swipe-to-close listener — a touch that starts on a row belongs to
-    // the row's own swipe handling exclusively, otherwise revealing this
-    // row's delete action and closing the whole sidebar could both fire
-    // from the same gesture.
-    e.stopPropagation()
-    const touch = e.touches[0]
-    swipeStartRef.current = { x: touch.clientX, y: touch.clientY, startSwipeX: swipeX }
-  }
-
-  function handleRowTouchMove(e: ReactTouchEvent) {
-    const start = swipeStartRef.current
-    if (!start) return
-    const touch = e.touches[0]
-    const deltaX = touch.clientX - start.x
-    const deltaY = touch.clientY - start.y
-    if (!isRowSwiping) {
-      // Only commits to a horizontal swipe once horizontal clearly
-      // dominates — otherwise this fights normal vertical scrolling of
-      // the sidebar's own file list.
-      if (Math.abs(deltaX) < 10 || Math.abs(deltaY) > Math.abs(deltaX)) return
-      setIsRowSwiping(true)
-    }
-    e.stopPropagation()
-    setSwipeX(Math.min(0, Math.max(-SWIPE_DELETE_WIDTH, start.startSwipeX + deltaX)))
-  }
-
-  function handleRowTouchEnd(e: ReactTouchEvent) {
-    e.stopPropagation()
-    swipeStartRef.current = null
-    if (!isRowSwiping) return
-    setIsRowSwiping(false)
-    // Snaps fully open or fully closed based on which half of the reveal
-    // width the drag passed — no resting halfway open.
-    setSwipeX((current) => (current < -SWIPE_DELETE_WIDTH / 2 ? -SWIPE_DELETE_WIDTH : 0))
-  }
-
   // Same small anchored-dropdown pattern as Sidebar.tsx's own "More vault
   // actions" menu (no shared hook — that one's own comment already notes
   // there's no dropdown primitive to reuse; duplicating this ~10-line
@@ -134,21 +80,6 @@ export function FileTreeNode({ node, depth, parentId }: { node: FileTreeNodeType
   const isPdf = node.type === 'attachment'
 
   const displayName = node.type === 'file' ? node.name.replace(/\.md$/, '') : node.name
-
-  const swipeDeleteAction = (
-    <button
-      type="button"
-      aria-label={`Delete ${displayName}`}
-      className="absolute inset-y-0 right-0 flex items-center justify-center"
-      style={{ width: SWIPE_DELETE_WIDTH, background: 'var(--error)', color: 'white' }}
-      onClick={() => {
-        setSwipeX(0)
-        setConfirmOpen(true)
-      }}
-    >
-      <Trash2 size={16} />
-    </button>
-  )
 
   async function handleDelete() {
     // If the note being deleted is the one currently open — or, for a
@@ -273,127 +204,101 @@ export function FileTreeNode({ node, depth, parentId }: { node: FileTreeNodeType
       <div>
         <div
           id={`sidebar-node-${node.id}`}
-          className="group relative w-full overflow-hidden rounded"
+          className="group flex w-full items-center gap-1 rounded px-1 hover:opacity-80"
           style={{
+            background: dragOverMode === 'into' ? 'var(--bg-tertiary)' : undefined,
             // Same insertion-point-line technique TabBar.tsx uses for its
             // own drag-reorder, vertical instead of horizontal — the middle
-            // band ("into", tinted below on the inner sliding layer) still
-            // means "drop inside this folder", unchanged from before. Stays
-            // on this outer, non-sliding wrapper since it marks a position
-            // in the list, not something the swipe-reveal should carry away.
+            // band (dragOverMode 'into', highlighted via background above)
+            // still means "drop inside this folder", unchanged from before.
             borderTop: `2px solid ${dragOverMode === 'before' ? 'var(--accent-link)' : 'transparent'}`,
             borderBottom: `2px solid ${dragOverMode === 'after' ? 'var(--accent-link)' : 'transparent'}`,
           }}
-          onTouchStart={handleRowTouchStart}
-          onTouchMove={handleRowTouchMove}
-          onTouchEnd={handleRowTouchEnd}
         >
-          {swipeDeleteAction}
-          {/* Sliding layer — carries the row's actual content plus an
-              opaque background, so it fully hides swipeDeleteAction behind
-              it until dragged left far enough to reveal it. `relative`
-              (not the default `static`) is load-bearing, not decorative:
-              CSS always paints a `position: absolute` element (the delete
-              button) above `static` siblings regardless of DOM order, so
-              without this the delete button rendered permanently on top of
-              — and ate every tap intended for — this row's own "⋯" menu,
-              even fully closed. Making this layer itself a positioned
-              element (no z-index needed) makes normal DOM-order stacking
-              apply instead, so it correctly paints over the delete button
-              whenever swipeX is 0. */}
-          <div
-            className="relative flex w-full items-center gap-1 px-1 hover:opacity-80"
-            style={{
-              background: dragOverMode === 'into' ? 'var(--bg-tertiary)' : 'var(--bg-secondary)',
-              transform: `translateX(${swipeX}px)`,
-              transition: isRowSwiping ? 'none' : 'transform 0.2s',
+          <button
+            type="button"
+            draggable
+            className="flex min-w-0 flex-1 items-center gap-1 truncate py-1 text-left text-sm"
+            style={{ paddingLeft: `${depth * 12 + 8}px`, color: 'var(--text-primary)' }}
+            onClick={() => toggleFolder(node.id)}
+            onDragStart={(e) => {
+              const payload: DragPayload = { fileId: node.id, parentId, type: 'folder' }
+              setDraggedPayload(payload)
+              e.dataTransfer.setData(DRAG_MIME, JSON.stringify(payload))
+              e.dataTransfer.effectAllowed = 'move'
+            }}
+            onDragEnd={() => setDraggedPayload(null)}
+            onDragOver={(e) => {
+              if (!e.dataTransfer.types.includes(DRAG_MIME)) return
+              e.preventDefault()
+              // A file dragged over a folder can only ever be moved *into*
+              // it — there's no valid position for a file among sibling
+              // folders (folders always sort before files) — so the whole
+              // row is the "into" target rather than showing a top/bottom
+              // insertion line that would silently do nothing on drop.
+              if (getDraggedPayload()?.type === 'note') {
+                setDragOverMode('into')
+                return
+              }
+              // Top/bottom quarters are reorder-before/after drop zones;
+              // the middle half keeps the existing "drop into this folder"
+              // behavior.
+              const rect = e.currentTarget.getBoundingClientRect()
+              const offsetY = e.clientY - rect.top
+              if (offsetY < rect.height * 0.25) setDragOverMode('before')
+              else if (offsetY > rect.height * 0.75) setDragOverMode('after')
+              else setDragOverMode('into')
+            }}
+            onDragLeave={() => setDragOverMode(null)}
+            onDrop={(e) => {
+              const mode = dragOverMode
+              setDragOverMode(null)
+              setDraggedPayload(null)
+              const raw = e.dataTransfer.getData(DRAG_MIME)
+              if (!raw) return
+              const payload = JSON.parse(raw) as DragPayload
+              if (payload.fileId === node.id) return // can't drop a folder onto itself
+
+              if (mode === 'before' || mode === 'after') {
+                // reorderNode itself handles both same-parent reorder and
+                // moving to a different parent in one gesture (dropping
+                // next to a sibling in a different folder moves it there,
+                // landing at that position) — same "drag it out among
+                // visible siblings" convention VS Code's own explorer uses.
+                reorderNode(payload.fileId, node.id, mode).catch((err) => {
+                  logError('filetree.reorderNode', err)
+                  showToast(toUserMessage(err, 'Could not move that item.'), 'error')
+                })
+                return
+              }
+
+              if (payload.parentId === node.id) return // already here
+              // A folder can't be moved into its own descendant — doing so
+              // would build an unreachable branch of the tree (and likely
+              // infinite-loop buildFileTree's parent-child reconstruction
+              // on the next vault load).
+              if (payload.type === 'folder' && isDescendantOf(fileTree, payload.fileId, node.id)) {
+                showToast('Cannot move a folder into its own subfolder', 'error')
+                return
+              }
+              moveNode(payload.fileId, node.id, payload.parentId)
+                .then(() => showToast(`Moved to "${node.name}"`, 'success'))
+                .catch((err) => {
+                  logError('filetree.moveNode', err)
+                  showToast(toUserMessage(err, 'Could not move that item.'), 'error')
+                })
             }}
           >
-            <button
-              type="button"
-              draggable
-              className="flex min-w-0 flex-1 items-center gap-1 truncate py-1 text-left text-sm"
-              style={{ paddingLeft: `${depth * 12 + 8}px`, color: 'var(--text-primary)' }}
-              onClick={() => toggleFolder(node.id)}
-              onDragStart={(e) => {
-                const payload: DragPayload = { fileId: node.id, parentId, type: 'folder' }
-                setDraggedPayload(payload)
-                e.dataTransfer.setData(DRAG_MIME, JSON.stringify(payload))
-                e.dataTransfer.effectAllowed = 'move'
-              }}
-              onDragEnd={() => setDraggedPayload(null)}
-              onDragOver={(e) => {
-                if (!e.dataTransfer.types.includes(DRAG_MIME)) return
-                e.preventDefault()
-                // A file dragged over a folder can only ever be moved *into*
-                // it — there's no valid position for a file among sibling
-                // folders (folders always sort before files) — so the whole
-                // row is the "into" target rather than showing a top/bottom
-                // insertion line that would silently do nothing on drop.
-                if (getDraggedPayload()?.type === 'note') {
-                  setDragOverMode('into')
-                  return
-                }
-                // Top/bottom quarters are reorder-before/after drop zones;
-                // the middle half keeps the existing "drop into this folder"
-                // behavior.
-                const rect = e.currentTarget.getBoundingClientRect()
-                const offsetY = e.clientY - rect.top
-                if (offsetY < rect.height * 0.25) setDragOverMode('before')
-                else if (offsetY > rect.height * 0.75) setDragOverMode('after')
-                else setDragOverMode('into')
-              }}
-              onDragLeave={() => setDragOverMode(null)}
-              onDrop={(e) => {
-                const mode = dragOverMode
-                setDragOverMode(null)
-                setDraggedPayload(null)
-                const raw = e.dataTransfer.getData(DRAG_MIME)
-                if (!raw) return
-                const payload = JSON.parse(raw) as DragPayload
-                if (payload.fileId === node.id) return // can't drop a folder onto itself
-
-                if (mode === 'before' || mode === 'after') {
-                  // reorderNode itself handles both same-parent reorder and
-                  // moving to a different parent in one gesture (dropping
-                  // next to a sibling in a different folder moves it there,
-                  // landing at that position) — same "drag it out among
-                  // visible siblings" convention VS Code's own explorer uses.
-                  reorderNode(payload.fileId, node.id, mode).catch((err) => {
-                    logError('filetree.reorderNode', err)
-                    showToast(toUserMessage(err, 'Could not move that item.'), 'error')
-                  })
-                  return
-                }
-
-                if (payload.parentId === node.id) return // already here
-                // A folder can't be moved into its own descendant — doing so
-                // would build an unreachable branch of the tree (and likely
-                // infinite-loop buildFileTree's parent-child reconstruction
-                // on the next vault load).
-                if (payload.type === 'folder' && isDescendantOf(fileTree, payload.fileId, node.id)) {
-                  showToast('Cannot move a folder into its own subfolder', 'error')
-                  return
-                }
-                moveNode(payload.fileId, node.id, payload.parentId)
-                  .then(() => showToast(`Moved to "${node.name}"`, 'success'))
-                  .catch((err) => {
-                    logError('filetree.moveNode', err)
-                    showToast(toUserMessage(err, 'Could not move that item.'), 'error')
-                  })
-              }}
+            <motion.span
+              className="inline-flex shrink-0"
+              animate={{ rotate: expanded ? 90 : 0 }}
+              transition={{ duration: 0.15 }}
             >
-              <motion.span
-                className="inline-flex shrink-0"
-                animate={{ rotate: expanded ? 90 : 0 }}
-                transition={{ duration: 0.15 }}
-              >
-                <ChevronRight size={14} />
-              </motion.span>
-              <span className="truncate">{node.name}</span>
-            </button>
-            {actionsMenu}
-          </div>
+              <ChevronRight size={14} />
+            </motion.span>
+            <span className="truncate">{node.name}</span>
+          </button>
+          {actionsMenu}
         </div>
         <AnimatePresence initial={false}>
           {expanded && (
@@ -441,13 +346,16 @@ export function FileTreeNode({ node, depth, parentId }: { node: FileTreeNodeType
   return (
     <div
       id={`sidebar-node-${node.id}`}
-      className="group relative w-full overflow-hidden rounded"
+      className="group flex w-full items-center gap-1 rounded px-1 hover:opacity-80"
       style={{
+        // Highlight lives on the row itself (not the inner button) so it
+        // spans the full width, including behind the rename/delete icons —
+        // scoping it to the flex-1 button left a visibly short highlight
+        // that stopped before reaching them.
+        background: isActive ? 'var(--bg-tertiary)' : undefined,
         // A file has no "drop into" behavior of its own — the whole row is
         // just a reorder-before/after target, top/bottom half like TabBar's
-        // own left/right split. Stays on this outer, non-sliding wrapper
-        // since it marks a position in the list, not something the
-        // swipe-reveal should carry away.
+        // own left/right split.
         borderTop: `2px solid ${dragOverMode === 'before' ? 'var(--accent-link)' : 'transparent'}`,
         borderBottom: `2px solid ${dragOverMode === 'after' ? 'var(--accent-link)' : 'transparent'}`,
       }}
@@ -479,68 +387,37 @@ export function FileTreeNode({ node, depth, parentId }: { node: FileTreeNodeType
           showToast(toUserMessage(err, 'Could not move that item.'), 'error')
         })
       }}
-      onTouchStart={handleRowTouchStart}
-      onTouchMove={handleRowTouchMove}
-      onTouchEnd={handleRowTouchEnd}
     >
-      {swipeDeleteAction}
-      {/* Sliding layer — carries the row's actual content plus an opaque
-          background, so it fully hides swipeDeleteAction behind it until
-          dragged left far enough to reveal it. `relative` (not the default
-          `static`) is load-bearing, not decorative: CSS always paints a
-          `position: absolute` element (the delete button) above `static`
-          siblings regardless of DOM order, so without this the delete
-          button rendered permanently on top of — and ate every tap intended
-          for — this row's own star/"⋯" buttons, even fully closed. Making
-          this layer itself a positioned element (no z-index needed) makes
-          normal DOM-order stacking apply instead, so it correctly paints
-          over the delete button whenever swipeX is 0. */}
-      <div
-        className="relative flex w-full items-center gap-1 px-1 hover:opacity-80"
+      <button
+        type="button"
+        draggable
+        className="flex min-w-0 flex-1 items-center gap-1.5 truncate py-1 text-left text-sm"
         style={{
-          // Highlight lives on this sliding layer (not the inner button) so
-          // it spans the full width, including behind the star/"⋯" icons —
-          // scoping it to the flex-1 button left a visibly short highlight
-          // that stopped before reaching them. Always opaque (falls back to
-          // the sidebar's own background) rather than `undefined` when not
-          // active — this layer needs to fully cover swipeDeleteAction
-          // underneath whenever the row isn't swiped open.
-          background: isActive ? 'var(--bg-tertiary)' : 'var(--bg-secondary)',
-          transform: `translateX(${swipeX}px)`,
-          transition: isRowSwiping ? 'none' : 'transform 0.2s',
+          paddingLeft: `${depth * 12 + 24}px`,
+          color: isActive ? 'var(--accent-link)' : 'var(--text-secondary)',
+        }}
+        onDragStart={(e) => {
+          // A dragged PDF behaves exactly like a dragged note for reorder/
+          // move-into-folder purposes — same DragPayload shape, no new
+          // 'attachment' variant needed.
+          const payload: DragPayload = { fileId: node.id, parentId, type: 'note' }
+          setDraggedPayload(payload)
+          e.dataTransfer.setData(DRAG_MIME, JSON.stringify(payload))
+          e.dataTransfer.effectAllowed = 'move'
+        }}
+        onDragEnd={() => setDraggedPayload(null)}
+        onClick={() => {
+          navigate(isPdf ? `/vault/pdf/${node.id}` : `/vault/note/${node.id}`)
+          // On mobile the sidebar overlays content, so get out of the way
+          // once a note's picked; on desktop it stays open (own layout column).
+          if (window.innerWidth < 1024) closeSidebar()
         }}
       >
-        <button
-          type="button"
-          draggable
-          className="flex min-w-0 flex-1 items-center gap-1.5 truncate py-1 text-left text-sm"
-          style={{
-            paddingLeft: `${depth * 12 + 24}px`,
-            color: isActive ? 'var(--accent-link)' : 'var(--text-secondary)',
-          }}
-          onDragStart={(e) => {
-            // A dragged PDF behaves exactly like a dragged note for reorder/
-            // move-into-folder purposes — same DragPayload shape, no new
-            // 'attachment' variant needed.
-            const payload: DragPayload = { fileId: node.id, parentId, type: 'note' }
-            setDraggedPayload(payload)
-            e.dataTransfer.setData(DRAG_MIME, JSON.stringify(payload))
-            e.dataTransfer.effectAllowed = 'move'
-          }}
-          onDragEnd={() => setDraggedPayload(null)}
-          onClick={() => {
-            navigate(isPdf ? `/vault/pdf/${node.id}` : `/vault/note/${node.id}`)
-            // On mobile the sidebar overlays content, so get out of the way
-            // once a note's picked; on desktop it stays open (own layout column).
-            if (window.innerWidth < 1024) closeSidebar()
-          }}
-        >
-          {isPdf && <FileText size={13} className="shrink-0" />}
-          <span className="truncate">{displayName}</span>
-        </button>
-        {starButton}
-        {actionsMenu}
-      </div>
+        {isPdf && <FileText size={13} className="shrink-0" />}
+        <span className="truncate">{displayName}</span>
+      </button>
+      {starButton}
+      {actionsMenu}
     </div>
   )
 }
