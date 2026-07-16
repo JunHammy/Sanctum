@@ -30,6 +30,7 @@ import {
   ClipboardPaste,
 } from 'lucide-react'
 import { useUIStore } from '../../stores/ui.store'
+import { useSwipeGesture } from '../../hooks/useSwipeGesture'
 import { useVaultStore } from '../../stores/vault.store'
 import { useToastStore } from '../../stores/toast.store'
 import { useNetworkStore } from '../../stores/network.store'
@@ -202,6 +203,19 @@ export function Sidebar({ nodes, isLoading, error, onRefresh }: SidebarProps) {
       document.removeEventListener('mouseup', handleMouseUp)
     }
   }, [isResizing, setSidebarWidth])
+
+  // Swipe-left-to-close on the panel itself, mobile only — on desktop
+  // (lg:+) this renders as a static, permanently-visible column, not an
+  // overlay, so a swipe there shouldn't dismiss it. FileTreeNode's own
+  // per-row swipe-to-reveal-delete stops propagation on touchstart, so a
+  // swipe that starts on a row is handled exclusively by that row and never
+  // reaches this handler — otherwise revealing a row's delete action and
+  // closing the whole sidebar would fire from the same gesture.
+  const { onTouchStart: onSidebarTouchStart, onTouchEnd: onSidebarTouchEnd } = useSwipeGesture({
+    onSwipeLeft: () => {
+      if (window.innerWidth < 1024) closeSidebar()
+    },
+  })
 
   function handleResizeStart(e: ReactMouseEvent) {
     e.preventDefault() // avoid text selection while dragging
@@ -552,6 +566,8 @@ export function Sidebar({ nodes, isLoading, error, onRefresh }: SidebarProps) {
               animate={{ x: 0, opacity: 1 }}
               exit={{ x: -sidebarWidth, opacity: 0 }}
               transition={{ duration: 0.18 }}
+              onTouchStart={onSidebarTouchStart}
+              onTouchEnd={onSidebarTouchEnd}
             >
               {/* Drag-to-resize handle, desktop only. Lives directly on this
                   non-scrolling outer panel, NOT inside the scrollable content

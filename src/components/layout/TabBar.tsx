@@ -4,24 +4,10 @@ import { X, BookOpen, FileText } from 'lucide-react'
 import { useTabsStore, HELP_TAB_ID } from '../../stores/tabs.store'
 import { useVaultStore } from '../../stores/vault.store'
 import { usePythonKernelStore } from '../../stores/python-kernel.store'
-import { findFileName, findNodeById } from '../../lib/vault-tree'
-import type { FileTreeNode } from '../../types/vault.types'
+import { findFileName } from '../../lib/vault-tree'
+import { tabPath, isPdfTab } from '../../lib/tab-path'
 
 const DRAG_MIME = 'application/x-sanctum-tab'
-
-function isPdfTab(id: string, fileTree: FileTreeNode[]): boolean {
-  const node = findNodeById(fileTree, id)
-  return node?.type === 'attachment' && node.mimeType === 'application/pdf'
-}
-
-// The Help tab id (see tabs.store.ts) maps to a fixed path; a PDF
-// attachment maps to its own viewer route; everything else is a real note
-// — open/close/reorder/active-highlight all reuse the exact same tab
-// machinery regardless of which of the three this resolves to.
-function tabPath(id: string, fileTree: FileTreeNode[]): string {
-  if (id === HELP_TAB_ID) return '/help'
-  return isPdfTab(id, fileTree) ? `/vault/pdf/${id}` : `/vault/note/${id}`
-}
 
 // Sits above ContentPane (not spanning the sidebar), same placement
 // convention as a browser or editor tab strip. Hidden entirely with no

@@ -7,6 +7,7 @@ import { QuickSwitcher } from '../search/QuickSwitcher'
 import { SearchModal } from '../search/SearchModal'
 import { CommandPalette } from '../common/CommandPalette'
 import { useKeyboardShortcut } from '../../hooks/useKeyboard'
+import { useEdgeSwipeToOpenSidebar } from '../../hooks/useEdgeSwipeToOpenSidebar'
 import { loadBlockEditor } from '../../lib/prefetch-block-editor'
 import { loadKatex } from '../../lib/prefetch-katex'
 import { useNoteStore } from '../../stores/note.store'
@@ -28,6 +29,8 @@ export function AppShell({ fileTree, isLoading, error, onRefresh, children }: Ap
   const [quickSwitcherOpen, setQuickSwitcherOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
+
+  useEdgeSwipeToOpenSidebar()
 
   useKeyboardShortcut('o', () => setQuickSwitcherOpen(true), { ctrl: true })
   useKeyboardShortcut('f', () => setSearchOpen(true), { ctrl: true, shift: true })

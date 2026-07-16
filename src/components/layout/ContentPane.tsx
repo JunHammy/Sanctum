@@ -1,8 +1,11 @@
 import type { ReactNode } from 'react'
+import { useSwipeTabs } from '../../hooks/useSwipeTabs'
 
 // Centered reading column (Notion/Obsidian-style) rather than left-aligned
 // content stretching to fill whatever space the sidebar leaves behind.
 export function ContentPane({ children }: { children: ReactNode }) {
+  const { onTouchStart, onTouchEnd } = useSwipeTabs()
+
   return (
     // min-w-0 matters here, not cosmetically: this is a flex item (row
     // sibling of Sidebar in AppShell), and a flex item's automatic minimum
@@ -20,7 +23,11 @@ export function ContentPane({ children }: { children: ReactNode }) {
     // leaving no way to scroll it up out of the cramped bottom edge while
     // editing it. Half the viewport gives every block, including the very
     // last one, room to scroll up into comfortable (roughly centered) view.
-    <main className="min-w-0 flex-1 overflow-y-auto px-5 pt-6 pb-[50vh] sm:px-8">
+    <main
+      className="min-w-0 flex-1 overflow-y-auto px-5 pt-6 pb-[50vh] sm:px-8"
+      onTouchStart={onTouchStart}
+      onTouchEnd={onTouchEnd}
+    >
       <div className="mx-auto w-full max-w-4xl">{children}</div>
     </main>
   )
