@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Signing in…</title>
+  </head>
+  <body>
+    <p>Signing in… this window should close automatically.</p>
+    <script>
+      // Google redirects the popup here after consent, with code/state (or
+      // error) as query params. This page's only job is to hand those back
+      // to the window that opened it, then get out of the way.
+      var params = new URLSearchParams(window.location.search)
+      if (window.opener) {
+        window.opener.postMessage(
+          {
+            type: 'sanctum-oauth-callback',
+            code: params.get('code'),
+            state: params.get('state'),
+            error: params.get('error'),
+          },
+          window.location.origin,
+        )
+      }
+      window.close()
+    </script>
+  </body>
+</html>
