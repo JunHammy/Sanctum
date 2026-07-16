@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ChevronRight, FileText, MoreHorizontal, Pencil, Star, Trash2 } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
@@ -36,7 +37,14 @@ export function FileTreeNode({ node, depth, parentId }: { node: FileTreeNodeType
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [renameOpen, setRenameOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
+  // Viewport-relative coordinates, computed once at the moment the menu
+  // opens — needed because the menu itself is portaled to document.body
+  // (see actionsMenu's own comment on why), so it can no longer rely on
+  // CSS `absolute` positioning relative to a parent inside the sidebar's
+  // scrollable container.
+  const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
+  const dropdownRef = useRef<HTMLDivElement>(null)
   const navigate = useNavigate()
   const closeSidebar = useUIStore((s) => s.closeSidebar)
   const moveNode = useVaultStore((s) => s.moveNode)
@@ -60,16 +68,35 @@ export function FileTreeNode({ node, depth, parentId }: { node: FileTreeNodeType
   useEffect(() => {
     if (!menuOpen) return
     function handleClickOutside(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false)
+      const target = e.target as Node
+      // Checked against both refs, not just menuRef — the dropdown itself
+      // is portaled to document.body (see actionsMenu), so it's no longer
+      // a DOM descendant of menuRef's wrapper. Without this, a click on
+      // Rename/Delete would count as "outside" and close the menu on
+      // mousedown, unmounting those buttons before their own onClick ever
+      // got a chance to fire.
+      if (menuRef.current?.contains(target)) return
+      if (dropdownRef.current?.contains(target)) return
+      setMenuOpen(false)
     }
     function handleEscape(e: KeyboardEvent) {
       if (e.key === 'Escape') setMenuOpen(false)
     }
+    // The portaled dropdown is `position: fixed` at coordinates computed
+    // once, at open time — it has no way to follow the sidebar's own
+    // scroll on its own, so closing it on scroll avoids leaving a
+    // visibly-misplaced menu floating over the wrong row. Capture phase
+    // so this fires regardless of which scrollable ancestor moved.
+    function handleScroll() {
+      setMenuOpen(false)
+    }
     document.addEventListener('mousedown', handleClickOutside)
     document.addEventListener('keydown', handleEscape)
+    document.addEventListener('scroll', handleScroll, true)
     return () => {
       document.removeEventListener('mousedown', handleClickOutside)
       document.removeEventListener('keydown', handleEscape)
+      document.removeEventListener('scroll', handleScroll, true)
     }
   }, [menuOpen])
 
@@ -119,6 +146,11 @@ export function FileTreeNode({ node, depth, parentId }: { node: FileTreeNodeType
     }
   }
 
+  // Rough, generous estimates — good enough to decide "does this fit
+  // below," not meant to be pixel-exact.
+  const MENU_WIDTH = 144
+  const MENU_HEIGHT_ESTIMATE = 90
+
   const actionsMenu = (
     <div className="relative shrink-0" ref={menuRef}>
       <button
@@ -130,47 +162,77 @@ export function FileTreeNode({ node, depth, parentId }: { node: FileTreeNodeType
         style={{ color: 'var(--text-muted)' }}
         onClick={(e) => {
           e.stopPropagation()
-          setMenuOpen((open) => !open)
+          setMenuOpen((open) => {
+            if (!open) {
+              // Computed once, right when the menu opens — not kept
+              // continuously in sync with scrolling (the scroll listener
+              // above just closes the menu instead). Portaled to
+              // document.body specifically so this doesn't get clipped by
+              // the sidebar's own `overflow-y-auto` container, and so
+              // hovering the open menu can never also satisfy this row's
+              // own `:hover` (which would otherwise drag the whole menu
+              // down to the row's `hover:opacity-80` — confirmed real bug
+              // via testing, not just a clipping issue).
+              const rect = e.currentTarget.getBoundingClientRect()
+              const openUpward = window.innerHeight - rect.bottom < MENU_HEIGHT_ESTIMATE
+              setMenuPosition({
+                top: openUpward ? rect.top - MENU_HEIGHT_ESTIMATE : rect.bottom,
+                left: Math.min(rect.right - MENU_WIDTH, window.innerWidth - MENU_WIDTH - 8),
+              })
+            }
+            return !open
+          })
         }}
       >
         <MoreHorizontal size={14} />
       </button>
-      <AnimatePresence>
-        {menuOpen && (
-          <motion.div
-            className="absolute top-full right-0 z-50 mt-1 w-36 rounded-md border p-1 shadow-lg"
-            style={{ borderColor: 'var(--border)', background: 'var(--bg-primary)' }}
-            initial={{ opacity: 0, y: -4, scale: 0.98 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -4, scale: 0.98 }}
-            transition={{ duration: 0.12 }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button
-              type="button"
-              className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-[var(--bg-tertiary)]"
-              onClick={() => {
-                setMenuOpen(false)
-                setRenameOpen(true)
-              }}
-            >
-              <Pencil size={13} style={{ color: 'var(--text-muted)' }} />
-              <span style={{ color: 'var(--text-primary)' }}>Rename</span>
-            </button>
-            <button
-              type="button"
-              className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-[var(--bg-tertiary)]"
-              onClick={() => {
-                setMenuOpen(false)
-                setConfirmOpen(true)
-              }}
-            >
-              <Trash2 size={13} style={{ color: 'var(--error)' }} />
-              <span style={{ color: 'var(--error)' }}>Delete</span>
-            </button>
-          </motion.div>
+      {menuPosition &&
+        createPortal(
+          <AnimatePresence>
+            {menuOpen && (
+              <motion.div
+                ref={dropdownRef}
+                className="fixed z-50 rounded-md border p-1 shadow-lg"
+                style={{
+                  top: menuPosition.top,
+                  left: menuPosition.left,
+                  width: MENU_WIDTH,
+                  borderColor: 'var(--border)',
+                  background: 'var(--bg-primary)',
+                }}
+                initial={{ opacity: 0, y: -4, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -4, scale: 0.98 }}
+                transition={{ duration: 0.12 }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-[var(--bg-tertiary)]"
+                  onClick={() => {
+                    setMenuOpen(false)
+                    setRenameOpen(true)
+                  }}
+                >
+                  <Pencil size={13} style={{ color: 'var(--text-muted)' }} />
+                  <span style={{ color: 'var(--text-primary)' }}>Rename</span>
+                </button>
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-[var(--bg-tertiary)]"
+                  onClick={() => {
+                    setMenuOpen(false)
+                    setConfirmOpen(true)
+                  }}
+                >
+                  <Trash2 size={13} style={{ color: 'var(--error)' }} />
+                  <span style={{ color: 'var(--error)' }}>Delete</span>
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>,
+          document.body,
         )}
-      </AnimatePresence>
       <PromptModal
         isOpen={renameOpen}
         title={node.type === 'folder' ? 'Rename folder' : isPdf ? 'Rename PDF' : 'Rename note'}
