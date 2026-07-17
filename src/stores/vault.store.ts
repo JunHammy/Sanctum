@@ -695,21 +695,49 @@ export const useVaultStore = create<VaultState>()((set, get) => ({
             (targetIdx < positions.length - 1 ? positions[targetIdx + 1] : positions[targetIdx] + REORDER_GAP * 2)) /
           2
 
+    // Confirmed real bug via testing ("drops land somewhere else than where
+    // I dropped it"): sortGroup renders every explicitly-ordered sibling
+    // BEFORE every never-dragged one, regardless of numeric value — it's
+    // two rigid buckets, not one continuous line. `positions` above treats
+    // the whole group as if it WERE one continuous line (real orders and
+    // synthesized alphabetical-fallback positions mixed together) purely to
+    // compute newOrder's midpoint — but until now, only the dragged item
+    // ever actually received a real `order`, so it could get promoted into
+    // the "ordered" bucket and render before/after a still-unordered
+    // neighbor in a way that contradicts the very position it was just
+    // computed against. Backfilling a real order onto every other
+    // currently-unordered sibling in the same pass is what actually
+    // collapses this back down to one consistent, comparable ordering for
+    // the whole group, permanently (not just until the next never-ordered
+    // item is added, which still correctly starts out alphabetical-tail
+    // until it's dragged itself).
+    const backfills = new Map<string, number>()
+    sortedGroup.forEach((n, i) => {
+      if (n.order === undefined) backfills.set(n.id, positions[i])
+    })
+
     // Optimistic: a drag is a fluid, continuous gesture, so the tree
     // updates immediately — awaiting the Drive write first (as every other
     // mutation here does) made a drop visibly lag behind the cursor.
     // Reverted below if the write fails.
     const previousTree = fileTree
-    const nextTree = isCrossParent
-      ? insertNode(removeNode(fileTree, draggedId), targetParentId, rootFolderId, { ...draggedNode, order: newOrder })
-      : replaceNode(fileTree, draggedId, (n) => ({ ...n, order: newOrder }))
+    let nextTree = fileTree
+    for (const [id, order] of backfills) {
+      nextTree = replaceNode(nextTree, id, (n) => ({ ...n, order }))
+    }
+    nextTree = isCrossParent
+      ? insertNode(removeNode(nextTree, draggedId), targetParentId, rootFolderId, { ...draggedNode, order: newOrder })
+      : replaceNode(nextTree, draggedId, (n) => ({ ...n, order: newOrder }))
     set({ fileTree: nextTree })
     cacheService.setCachedFileTree(rootFolderId, nextTree) // fire-and-forget write-through
 
     // Debounced Drive write — see pendingReorderWrites' own comment. A
     // repeated re-drag of this same item before the delay elapses cancels
     // the previous pending write and reschedules, so only the position as
-    // of the last drop in a burst actually reaches Drive.
+    // of the last drop in a burst actually reaches Drive. Backfilled
+    // siblings aren't part of that debounce (they're a one-time correction
+    // for this drop, not something that keeps changing mid-drag) — written
+    // alongside, once.
     const existingTimer = pendingReorderWrites.get(draggedId)
     if (existingTimer) clearTimeout(existingTimer)
     pendingReorderWrites.set(
@@ -719,7 +747,10 @@ export const useVaultStore = create<VaultState>()((set, get) => ({
         void (async () => {
           try {
             if (isCrossParent) await driveService.moveFile(draggedId, targetParentId, draggedParentId)
-            await driveService.setFileOrder(draggedId, newOrder)
+            await Promise.all([
+              driveService.setFileOrder(draggedId, newOrder),
+              ...Array.from(backfills, ([id, order]) => driveService.setFileOrder(id, order)),
+            ])
           } catch (err) {
             if (get().fileTree === nextTree) {
               set({ fileTree: previousTree })
