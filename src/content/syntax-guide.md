@@ -295,7 +295,7 @@ graph TD
 ```
 ````
 
-Rendered live below:
+Rendered live below. This particular example uses a decision diamond (`B{...}`) rather than a plain rectangle — a real, valid Mermaid node shape, but outside the visual editor's narrower vocabulary (rectangles only), so typing this by hand is exactly the kind of thing that stays in raw mode rather than opening `/mermaid`'s grid:
 
 ```mermaid
 graph TD
@@ -318,7 +318,7 @@ graph TD
 ```
 ````
 
-Rendered live below — the JSON is exactly what gets passed to `new Chart(canvas, config)`, so anything valid in Chart.js's own config docs works here too:
+Rendered live below — the JSON is exactly what gets passed to `new Chart(canvas, config)`, so anything valid in Chart.js's own config docs works here too. Unlike the two examples above, this one *is* simple enough (one dataset, a recognized type) to open in `/chart`'s visual editor if you switch this block to Edit mode — the Code icon toggles back to this exact raw view any time:
 
 ```chartjs
 {
@@ -339,7 +339,7 @@ Rendered live below — the JSON is exactly what gets passed to `new Chart(canva
 ```
 ````
 
-Rendered live below — `data` and `layout` map directly onto Plotly's own `Plotly.newPlot(el, data, layout)` call:
+Rendered live below — `data` and `layout` map directly onto Plotly's own `Plotly.newPlot(el, data, layout)` call. This example is a bare `scatter` trace with no `mode` set (Plotly's own default there is points only, no connecting line) — another case outside the visual editor's Bar/Line/Pie vocabulary, so it stays raw-only too:
 
 ```plotly
 {
