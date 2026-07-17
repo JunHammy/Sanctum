@@ -191,10 +191,46 @@
   border-radius: 0;
 }
 
+/* list-style-type set explicitly here, not left to the browser default —
+   confirmed real bug via testing: Tailwind's preflight reset sets
+   `list-style: none` on every ul/ol as its own baseline (so utility
+   classes are the only thing that ever adds markers back), which silently
+   stripped every bullet/number from rendered note content, task-list
+   checkboxes aside. `list-style-position: outside` (also a preflight
+   default worth pinning explicitly) keeps a wrapped long list item's
+   second line indented under the text rather than under the marker. */
 .markdown-body ul,
 .markdown-body ol {
   padding-left: 1.5em;
   margin: 0.75em 0;
+  list-style-position: outside;
+}
+
+.markdown-body ul {
+  list-style-type: disc;
+}
+
+.markdown-body ol {
+  list-style-type: decimal;
+}
+
+.markdown-body ul ul,
+.markdown-body ol ul {
+  list-style-type: circle;
+}
+
+.markdown-body ul ul ul,
+.markdown-body ol ul ul,
+.markdown-body ul ol ul,
+.markdown-body ol ol ul {
+  list-style-type: square;
+}
+
+/* Task-list items (markdown-it-task-lists) get a real checkbox as their
+   own visible marker — a bullet in front of it too would be redundant
+   clutter, not a second, competing marker. */
+.markdown-body li.task-list-item {
+  list-style-type: none;
 }
 
 /* Scrolls independently of the page — see the table_open/table_close
