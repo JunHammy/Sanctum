@@ -65,6 +65,18 @@ export function MarkdownEditor({ value, onChange, bare, language = 'markdown' }:
         basicSetup,
         oneDark,
         EditorView.lineWrapping,
+        // Confirmed real bug via testing (Windows 11, reproduced in *any*
+        // block, not something specific to chart/diagram fences): without
+        // these turned off, Windows' own hardware-keyboard "Text
+        // Suggestions" (predictive text) feature can activate inside
+        // CodeMirror's contenteditable region, since nothing here told it
+        // this wasn't an ordinary plain-text field. Once that candidate UI
+        // shows, Enter and the arrow keys navigate/accept *its* suggestions
+        // instead of doing their normal editor thing — which reads exactly
+        // like "Enter doesn't add a line, arrow keys undo it, content
+        // grows and collapses unpredictably," despite CodeMirror's own
+        // document/transaction logic never actually doing anything wrong.
+        EditorView.contentAttributes.of({ autocorrect: 'off', autocapitalize: 'off', spellcheck: 'false' }),
         // Blocks live inside position:relative wrappers (BlockEditor's
         // per-block container), which CodeMirror would otherwise adopt as
         // the tooltip's offsetParent — forcing autocomplete/slash-command
