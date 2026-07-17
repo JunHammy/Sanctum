@@ -19,12 +19,12 @@ interface AuthState {
   tokenExpiresAt: number | null
   isAuthenticated: boolean
   error: string | null
-  // False until persist's sessionStorage rehydration has actually run.
+  // False until persist's localStorage rehydration has actually run.
   // zustand's persist middleware hydrates asynchronously even for a
-  // synchronous storage engine like sessionStorage — there's a real (if
+  // synchronous storage engine like localStorage — there's a real (if
   // brief) window right after a page load/refresh where `token` still
   // holds its unhydrated initial value (null) even though a valid token is
-  // sitting in sessionStorage. AuthGate waits on this before mounting any
+  // sitting in localStorage. AuthGate waits on this before mounting any
   // route, so nothing can fire a Drive API call with a token that just
   // hasn't loaded yet.
   hasHydrated: boolean
@@ -178,14 +178,18 @@ export const useAuthStore = create<AuthState>()(
       },
     }),
     {
-      // sessionStorage (not localStorage): the token shouldn't outlive the
-      // browser tab, but should survive a page reload within it. The
-      // refresh token gets the same tab-scoped lifetime as the access
-      // token, deliberately — it's the same security posture as before,
-      // just fixing the *within-a-session* renewal reliability, not
-      // extending how long a signed-in session survives closing the tab.
+      // localStorage, not sessionStorage — changed at the user's explicit
+      // request: sessionStorage wiped the whole session (access + refresh
+      // token) on every tab/app close, which forced a full interactive
+      // re-consent (popup, unverified-app warning to click past) far more
+      // often than Google's own 7-day refresh-token cap for this
+      // unverified-status app ever required on its own. This is a real,
+      // deliberate security tradeoff, not an oversight: the session now
+      // survives on disk across closes, bounded only by that 7-day cap
+      // (or an explicit sign-out) rather than the tab's lifetime — accepted
+      // here specifically because this is a personal, single-user tool.
       name: 'sanctum-auth',
-      storage: createJSONStorage(() => sessionStorage),
+      storage: createJSONStorage(() => localStorage),
       partialize: (state) => ({
         token: state.token,
         refreshToken: state.refreshToken,
@@ -194,9 +198,9 @@ export const useAuthStore = create<AuthState>()(
         isAuthenticated: state.isAuthenticated,
       }),
       onRehydrateStorage: () => (state) => {
-        // Runs even when there's nothing in sessionStorage yet (a brand
-        // new tab) — hasHydrated still needs to flip so AuthGate isn't
-        // stuck waiting forever in that case.
+        // Runs even when there's nothing in localStorage yet (never signed
+        // in on this device/browser) — hasHydrated still needs to flip so
+        // AuthGate isn't stuck waiting forever in that case.
         if (state) {
           if (state.tokenExpiresAt && state.tokenExpiresAt < Date.now()) {
             state.token = null
@@ -209,7 +213,7 @@ export const useAuthStore = create<AuthState>()(
           }
         }
         // Deferred to a microtask, not called directly: for a synchronous
-        // storage engine like sessionStorage, this callback can fire
+        // storage engine like localStorage, this callback can fire
         // synchronously *during* the create() call below — at that exact
         // moment `useAuthStore` (the const being assigned on the other side
         // of that same create() call) is still in its temporal dead zone,

@@ -1,6 +1,8 @@
-import { memo, useEffect, useRef, useState, type DragEvent } from 'react'
+import { memo, useEffect, useRef, useState, type DragEvent, type MouseEvent } from 'react'
 import { ChevronUp, ChevronDown, GripVertical, Plus, Trash2, Table2, Code, Maximize2, Sigma } from 'lucide-react'
 import { useVaultStore } from '../../stores/vault.store'
+import { useToastStore } from '../../stores/toast.store'
+import { resolveWikilink } from '../../lib/wikilink-resolver'
 import { useImageResolution } from '../../hooks/useImageResolution'
 import { useTransclusion } from '../../hooks/useTransclusion'
 import { useCharts } from '../../hooks/useCharts'
@@ -86,6 +88,7 @@ export const Block = memo(function Block({
 }: BlockProps) {
   const fileTree = useVaultStore((s) => s.fileTree)
   const isVaultLoading = useVaultStore((s) => s.isLoading)
+  const showToast = useToastStore((s) => s.show)
   const isTouch = useIsTouchDevice()
   const containerRef = useRef<HTMLDivElement>(null)
   const html = block.rawText.trim() ? renderBody(block.rawText) : EMPTY_PLACEHOLDER
@@ -200,6 +203,30 @@ export const Block = memo(function Block({
   function handleExpand() {
     if (!isActive) onActivate(block.id)
     setIsExpanded(true)
+  }
+
+  // Edit mode deliberately doesn't navigate on a wikilink click — clicking
+  // one just activates the block for editing, same as clicking anywhere
+  // else in it (edit mode is for editing, not link-browsing; switch to
+  // Read mode to actually follow a link). But the rendered wikilink is a
+  // real `<a href="#">` (plugin-wikilink.ts), and without an explicit
+  // preventDefault, that native anchor navigation fires *alongside*
+  // onActivate below — confirmed a real bug via testing, not something
+  // exclusive to unresolved targets: in this hash-routed app, jumping the
+  // URL hash to empty blows away the current route entirely, which is what
+  // actually closed the note and reloaded. A resolved target's own
+  // resulting state just happened to look closer to "nothing visibly
+  // happened," which is why it read as an invalid-link-only problem.
+  function handleInactiveClick(e: MouseEvent<HTMLDivElement>) {
+    const link = (e.target as HTMLElement).closest('.wikilink')
+    if (link) {
+      e.preventDefault()
+      const target = link.getAttribute('data-target')
+      if (target && !resolveWikilink(target, fileTree)) {
+        showToast(`No note found for "${target}"`, 'error')
+      }
+    }
+    onActivate(block.id)
   }
 
   return (
@@ -437,7 +464,7 @@ export const Block = memo(function Block({
                 <div
                   ref={containerRef}
                   className="markdown-body cursor-text px-1 py-0.5 hover:bg-[var(--bg-tertiary)]"
-                  onClick={() => onActivate(block.id)}
+                  onClick={handleInactiveClick}
                   dangerouslySetInnerHTML={{ __html: html }}
                 />
                 {activeNoteId && (
@@ -457,7 +484,7 @@ export const Block = memo(function Block({
                 <div
                   ref={containerRef}
                   className="markdown-body cursor-text px-1 py-0.5 hover:bg-[var(--bg-tertiary)]"
-                  onClick={() => onActivate(block.id)}
+                  onClick={handleInactiveClick}
                   dangerouslySetInnerHTML={{ __html: html }}
                 />
                 {activeNoteId && (
@@ -475,7 +502,7 @@ export const Block = memo(function Block({
               <div
                 ref={containerRef}
                 className="markdown-body cursor-text rounded px-1 py-0.5 hover:bg-[var(--bg-tertiary)]"
-                onClick={() => onActivate(block.id)}
+                onClick={handleInactiveClick}
                 dangerouslySetInnerHTML={{ __html: html }}
               />
             )}

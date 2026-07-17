@@ -16,8 +16,8 @@ export function AuthGate({ children }: { children: ReactNode }) {
   const hasActiveVault = useVaultPreferenceStore((s) => s.activeVaultId !== null)
   const location = useLocation()
 
-  // zustand's persist middleware hydrates sessionStorage asynchronously,
-  // even though sessionStorage itself is synchronous — right after a page
+  // zustand's persist middleware hydrates localStorage asynchronously,
+  // even though localStorage itself is synchronous — right after a page
   // refresh there's a brief window where `isAuthenticated`/`token` still
   // hold their unhydrated initial (signed-out) values. Rendering nothing
   // until hydration completes means VaultRoute/NoteView never mount (and
