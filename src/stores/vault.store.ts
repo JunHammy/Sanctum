@@ -62,10 +62,10 @@ interface VaultState {
   // the new name (see rename-links.ts). Folders aren't linkable, so no
   // link scan runs for them.
   renameNode: (id: string, newName: string) => Promise<void>
-  // Manual drag-reorder within the same parent — folders and files sort as
-  // separate groups (see sortGroup), so a folder can only be reordered
-  // relative to sibling folders, a file only relative to sibling files.
-  // Cross-folder moves remain moveNode's job, not this one.
+  // Manual drag-reorder within the same parent — folders and files
+  // interleave freely in one ordered group (see sortGroup), so a folder can
+  // be reordered relative to a sibling file and vice versa. Cross-folder
+  // moves remain moveNode's job, not this one.
   reorderNode: (draggedId: string, targetId: string, side: 'before' | 'after') => Promise<void>
   // Flips a note/PDF's starred flag (Drive `properties.starred`) — a
   // discrete click, not a continuous gesture like reorderNode, so no
@@ -80,21 +80,25 @@ interface VaultState {
 
 const FOLDER_MIME = 'application/vnd.google-apps.folder'
 
-// Within a folders-or-files group: explicitly ordered siblings (dragged at
-// least once, see reorderNode) sort by their fractional order value first,
-// ascending; everything else falls back to alphabetical and is appended
-// after — so a brand-new sibling doesn't need an eager order backfill, it
-// just sorts alphabetically among the unordered group until it's dragged.
+// Within one sibling group (folders and files mixed together): explicitly
+// ordered siblings (dragged at least once, see reorderNode) sort by their
+// fractional order value first, ascending; everything else falls back to
+// alphabetical and is appended after — so a brand-new sibling doesn't need
+// an eager order backfill, it just sorts alphabetically among the unordered
+// group until it's dragged.
 function sortGroup(nodes: FileTreeNode[]): FileTreeNode[] {
   const ordered = nodes.filter((n) => n.order !== undefined).sort((a, b) => a.order! - b.order!)
   const unordered = nodes.filter((n) => n.order === undefined).sort((a, b) => a.name.localeCompare(b.name))
   return [...ordered, ...unordered]
 }
 
+// Folders and files interleave freely in one group, ordered by drag
+// position (or alphabetically, for anything never explicitly dragged) —
+// no folders-always-first split. That split was the earlier convention,
+// dropped at the user's request (a folder or file's position should be
+// whatever was actually dragged, not constrained by its type).
 function sortNodes(nodes: FileTreeNode[]): FileTreeNode[] {
-  const folders = sortGroup(nodes.filter((n) => n.type === 'folder'))
-  const rest = sortGroup(nodes.filter((n) => n.type !== 'folder'))
-  return [...folders, ...rest]
+  return sortGroup(nodes)
 }
 
 function groupByParent(files: DriveFile[]): Map<string, DriveFile[]> {
@@ -665,7 +669,6 @@ export const useVaultStore = create<VaultState>()((set, get) => ({
     const draggedNode = findNode(fileTree, draggedId)
     const targetNode = findNode(fileTree, targetId)
     if (!draggedNode || !targetNode) return
-    if ((draggedNode.type === 'folder') !== (targetNode.type === 'folder')) return // folders/files never interleave
     // A folder can't be dropped next to one of its own descendants — same
     // corruption risk moveNode's own "into" path already guards against.
     if (draggedNode.type === 'folder' && isDescendantOf(fileTree, draggedId, targetId)) return
@@ -676,7 +679,10 @@ export const useVaultStore = create<VaultState>()((set, get) => ({
     const draggedParentId = findParentId(fileTree, draggedId, rootFolderId) ?? rootFolderId
     const isCrossParent = draggedParentId !== targetParentId
 
-    const group = siblings.filter((n) => (n.type === 'folder') === (draggedNode.type === 'folder') && n.id !== draggedId)
+    // Folders and files interleave freely now — the sibling group used to
+    // compute a fractional order is every sibling regardless of type, not
+    // split into a same-type-only group.
+    const group = siblings.filter((n) => n.id !== draggedId)
     const sortedGroup = sortGroup(group)
     const positions = effectiveOrders(sortedGroup)
     const targetIdx = sortedGroup.findIndex((n) => n.id === targetId)

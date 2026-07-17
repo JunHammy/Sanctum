@@ -9,7 +9,7 @@ import { useTabsStore } from '../../stores/tabs.store'
 import { useToastStore } from '../../stores/toast.store'
 import { toUserMessage, logError } from '../../lib/error-messages'
 import { isDescendantOf, collectFileIds } from '../../lib/vault-tree'
-import { DRAG_MIME, type DragPayload, setDraggedPayload, getDraggedPayload } from '../../lib/file-tree-dnd'
+import { DRAG_MIME, type DragPayload, setDraggedPayload } from '../../lib/file-tree-dnd'
 import { useIsTouchDevice } from '../../hooks/useIsTouchDevice'
 import { ConfirmModal } from '../common/ConfirmModal'
 import { PromptModal } from '../common/PromptModal'
@@ -162,26 +162,26 @@ export function FileTreeNode({ node, depth, parentId }: { node: FileTreeNodeType
         style={{ color: 'var(--text-muted)' }}
         onClick={(e) => {
           e.stopPropagation()
-          setMenuOpen((open) => {
-            if (!open) {
-              // Computed once, right when the menu opens — not kept
-              // continuously in sync with scrolling (the scroll listener
-              // above just closes the menu instead). Portaled to
-              // document.body specifically so this doesn't get clipped by
-              // the sidebar's own `overflow-y-auto` container, and so
-              // hovering the open menu can never also satisfy this row's
-              // own `:hover` (which would otherwise drag the whole menu
-              // down to the row's `hover:opacity-80` — confirmed real bug
-              // via testing, not just a clipping issue).
-              const rect = e.currentTarget.getBoundingClientRect()
-              const openUpward = window.innerHeight - rect.bottom < MENU_HEIGHT_ESTIMATE
-              setMenuPosition({
-                top: openUpward ? rect.top - MENU_HEIGHT_ESTIMATE : rect.bottom,
-                left: Math.min(rect.right - MENU_WIDTH, window.innerWidth - MENU_WIDTH - 8),
-              })
-            }
-            return !open
-          })
+          // Read synchronously, before setMenuOpen — not inside its updater
+          // callback. Confirmed real crash via testing ("now and then,"
+          // intermittent): React doesn't guarantee a functional setState
+          // updater runs synchronously within the event handler, and
+          // `e.currentTarget` is reset to null the moment the event's
+          // dispatch finishes — so a deferred updater invocation could
+          // easily be reading a null currentTarget by the time it actually
+          // ran, throwing on .getBoundingClientRect(). Reading `menuOpen`
+          // from the render closure here (rather than the updater's own
+          // `open` param) is safe — this whole handler only ever runs once
+          // per click, so there's no stale-value risk within it.
+          if (!menuOpen) {
+            const rect = e.currentTarget.getBoundingClientRect()
+            const openUpward = window.innerHeight - rect.bottom < MENU_HEIGHT_ESTIMATE
+            setMenuPosition({
+              top: openUpward ? rect.top - MENU_HEIGHT_ESTIMATE : rect.bottom,
+              left: Math.min(rect.right - MENU_WIDTH, window.innerWidth - MENU_WIDTH - 8),
+            })
+          }
+          setMenuOpen((open) => !open)
         }}
       >
         <MoreHorizontal size={14} />
@@ -293,18 +293,14 @@ export function FileTreeNode({ node, depth, parentId }: { node: FileTreeNodeType
             onDragOver={(e) => {
               if (!e.dataTransfer.types.includes(DRAG_MIME)) return
               e.preventDefault()
-              // A file dragged over a folder can only ever be moved *into*
-              // it — there's no valid position for a file among sibling
-              // folders (folders always sort before files) — so the whole
-              // row is the "into" target rather than showing a top/bottom
-              // insertion line that would silently do nothing on drop.
-              if (getDraggedPayload()?.type === 'note') {
-                setDragOverMode('into')
-                return
-              }
-              // Top/bottom quarters are reorder-before/after drop zones;
-              // the middle half keeps the existing "drop into this folder"
-              // behavior.
+              // Top/bottom quarters are reorder-before/after; the middle
+              // half is "drop into this folder." Same zones regardless of
+              // whether a note or another folder is being dragged — folders
+              // and files interleave freely as siblings now, and folders
+              // nesting inside folders via the middle band was already
+              // supported before that change and is unaffected by it
+              // (moveNode's own "into" path still separately refuses a
+              // folder dropped into itself or one of its own descendants).
               const rect = e.currentTarget.getBoundingClientRect()
               const offsetY = e.clientY - rect.top
               if (offsetY < rect.height * 0.25) setDragOverMode('before')
@@ -423,11 +419,6 @@ export function FileTreeNode({ node, depth, parentId }: { node: FileTreeNodeType
       }}
       onDragOver={(e) => {
         if (!e.dataTransfer.types.includes(DRAG_MIME)) return
-        // A folder can never be reordered among sibling files (folders
-        // always sort before files) — don't preventDefault, so the browser
-        // shows its native no-drop cursor instead of a misleading
-        // insertion line for a drop that would just silently no-op.
-        if (getDraggedPayload()?.type === 'folder') return
         e.preventDefault()
         const rect = e.currentTarget.getBoundingClientRect()
         setDragOverMode(e.clientY < rect.top + rect.height / 2 ? 'before' : 'after')
