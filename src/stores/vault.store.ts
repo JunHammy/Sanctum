@@ -41,12 +41,15 @@ interface VaultState {
   createVault: (name: string) => Promise<void>
   renameVault: (vaultId: string, name: string) => Promise<void>
   deleteVault: (vaultId: string) => Promise<void>
-  createNote: (name: string) => Promise<string>
+  // parentId defaults to the vault root when omitted — passed explicitly
+  // by the "New note"/"New folder" destination-folder picker (PromptModal)
+  // when the user chose somewhere other than root.
+  createNote: (name: string, parentId?: string) => Promise<string>
   // Same reactive-insert path as createNote, but for a caller that already
   // has a full note body ready (DOCX import, primarily) rather than
   // wanting the blank starter template createNote always builds.
-  createNoteWithContent: (name: string, content: string) => Promise<string>
-  createFolder: (name: string) => Promise<void>
+  createNoteWithContent: (name: string, content: string, parentId?: string) => Promise<string>
+  createFolder: (name: string, parentId?: string) => Promise<void>
   // Uploads a PDF as a real Drive attachment (no conversion, unlike
   // createNoteWithContent's docx/csv/xlsx callers) — inserted straight into
   // the tree the same reactive way, so it shows up in the sidebar (as a
@@ -315,11 +318,12 @@ function registerNewNoteFile(
   set: (partial: Partial<VaultState>) => void,
   file: DriveFile,
   content: string,
+  parentId?: string,
 ) {
   const { fileTree, rootFolderId } = get()
   if (!rootFolderId) return
   const newNode: FileTreeNode = { id: file.id, name: file.name, type: 'file', modifiedTime: file.modifiedTime }
-  const nextTree = insertNode(fileTree, rootFolderId, rootFolderId, newNode)
+  const nextTree = insertNode(fileTree, parentId ?? rootFolderId, rootFolderId, newNode)
   set({ fileTree: nextTree })
   useSearchStore.getState().updateIndexForNote(file.id, content)
   useBacklinksStore.getState().updateForNote(file.id, content, nextTree)
@@ -565,30 +569,30 @@ export const useVaultStore = create<VaultState>()((set, get) => ({
     }
   },
 
-  createNote: async (name) => {
+  createNote: async (name, parentId) => {
     const filename = name.endsWith('.md') ? name : `${name}.md`
     const title = name.replace(/\.md$/, '')
     const today = new Date().toISOString().slice(0, 10)
     const content = `---\ntitle: ${title}\ncreated: ${today}\n---\n\n# ${title}\n`
 
-    const file = await driveService.createNote(filename, content)
-    registerNewNoteFile(get, set, file, content)
+    const file = await driveService.createNote(filename, content, parentId)
+    registerNewNoteFile(get, set, file, content, parentId)
     return file.id
   },
 
-  createNoteWithContent: async (name, content) => {
+  createNoteWithContent: async (name, content, parentId) => {
     const filename = name.endsWith('.md') ? name : `${name}.md`
-    const file = await driveService.createNote(filename, content)
-    registerNewNoteFile(get, set, file, content)
+    const file = await driveService.createNote(filename, content, parentId)
+    registerNewNoteFile(get, set, file, content, parentId)
     return file.id
   },
 
-  createFolder: async (name) => {
-    const folder = await driveService.createFolder(name)
+  createFolder: async (name, parentId) => {
+    const folder = await driveService.createFolder(name, parentId)
     const { fileTree, rootFolderId } = get()
     if (rootFolderId) {
       const newNode: FileTreeNode = { id: folder.id, name: folder.name, type: 'folder', children: [] }
-      set({ fileTree: insertNode(fileTree, rootFolderId, rootFolderId, newNode) })
+      set({ fileTree: insertNode(fileTree, parentId ?? rootFolderId, rootFolderId, newNode) })
     }
   },
 

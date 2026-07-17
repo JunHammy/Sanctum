@@ -25,6 +25,7 @@ import { useToastStore } from '../../stores/toast.store'
 import { exportVaultZip } from '../../services/backup.service'
 import { toUserMessage, logError } from '../../lib/error-messages'
 import { fuzzyMatch } from '../../lib/fuzzy-match'
+import { flattenFolders } from '../../lib/vault-tree'
 
 interface CommandPaletteProps {
   isOpen: boolean
@@ -135,10 +136,10 @@ export function CommandPalette({ isOpen, onClose, onOpenSearch, onOpenQuickSwitc
     }
   }
 
-  async function handleCreateNote(name: string) {
+  async function handleCreateNote(name: string, parentId?: string) {
     setPromptOpen(null)
     try {
-      const id = await useVaultStore.getState().createNote(name)
+      const id = await useVaultStore.getState().createNote(name, parentId)
       showToast(`Created "${name}"`, 'success')
       navigate(`/vault/note/${id}`)
     } catch (err) {
@@ -147,16 +148,18 @@ export function CommandPalette({ isOpen, onClose, onOpenSearch, onOpenQuickSwitc
     }
   }
 
-  async function handleCreateFolder(name: string) {
+  async function handleCreateFolder(name: string, parentId?: string) {
     setPromptOpen(null)
     try {
-      await useVaultStore.getState().createFolder(name)
+      await useVaultStore.getState().createFolder(name, parentId)
       showToast(`Created folder "${name}"`, 'success')
     } catch (err) {
       logError('commandPalette.createFolder', err)
       showToast(toUserMessage(err, 'Could not create the folder.'), 'error')
     }
   }
+
+  const flatFolders = useMemo(() => flattenFolders(fileTree), [fileTree])
 
   return (
     <>
@@ -198,6 +201,7 @@ export function CommandPalette({ isOpen, onClose, onOpenSearch, onOpenQuickSwitc
         placeholder="Note title"
         onSubmit={handleCreateNote}
         onClose={() => setPromptOpen(null)}
+        folders={flatFolders}
       />
       <PromptModal
         isOpen={promptOpen === 'folder'}
@@ -205,6 +209,7 @@ export function CommandPalette({ isOpen, onClose, onOpenSearch, onOpenQuickSwitc
         placeholder="Folder name"
         onSubmit={handleCreateFolder}
         onClose={() => setPromptOpen(null)}
+        folders={flatFolders}
       />
       <ShortcutsModal isOpen={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
     </>

@@ -1,5 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { Modal } from './Modal'
+import { FolderPicker } from './FolderPicker'
+import type { FlatFolder } from '../../lib/vault-tree'
 
 interface PromptModalProps {
   isOpen: boolean
@@ -9,8 +11,18 @@ interface PromptModalProps {
   // start with the vault's current name rather than blank.
   initialValue?: string
   submitLabel?: string
-  onSubmit: (value: string) => void
+  // Second arg is the chosen destination folder id (undefined = vault
+  // root) — only ever populated when `folders` below is provided. Callers
+  // that don't care (vault rename/create) can keep a plain `(value: string)
+  // => void` handler; TypeScript allows a function with fewer params to
+  // satisfy a wider one, so nothing there needs to change.
+  onSubmit: (value: string, parentId?: string) => void
   onClose: () => void
+  // Supplying this turns on the "Location" folder picker — only "New
+  // note"/"New folder" pass it (via flattenFolders(fileTree)); vault
+  // rename/create have no notion of a destination folder and simply omit
+  // it, which also skips rendering the picker entirely.
+  folders?: FlatFolder[]
 }
 
 // Text-input-and-submit variant of Modal, used for "New Note"/"New Folder"
@@ -24,6 +36,7 @@ export function PromptModal({
   submitLabel = 'Create',
   onSubmit,
   onClose,
+  folders,
 }: PromptModalProps) {
   const [value, setValue] = useState(initialValue)
   // Guards against a real, confirmed bug: onSubmit (e.g. vault.store's
@@ -37,16 +50,19 @@ export function PromptModal({
   // notes actually created. Sidestepped here directly rather than relying
   // on every caller to separately debounce its own async action.
   const [isSubmitting, setIsSubmitting] = useState(false)
+  // undefined = vault root, matching createNote/createFolder's own default.
+  const [parentId, setParentId] = useState<string | undefined>(undefined)
 
   // This component stays mounted across opens (only Modal's inner content
   // animates in/out), so a fresh initialValue needs to be re-applied
   // explicitly each time it opens rather than relying on useState's
-  // one-time initializer. Also where isSubmitting resets, so the guard
-  // above doesn't leak into the next time this same modal instance opens.
+  // one-time initializer. Also where isSubmitting/parentId reset, so
+  // neither leaks into the next time this same modal instance opens.
   useEffect(() => {
     if (isOpen) {
       setValue(initialValue)
       setIsSubmitting(false)
+      setParentId(undefined)
     }
   }, [isOpen, initialValue])
 
@@ -56,7 +72,7 @@ export function PromptModal({
     const trimmed = value.trim()
     if (!trimmed) return
     setIsSubmitting(true)
-    onSubmit(trimmed)
+    onSubmit(trimmed, parentId)
     setValue('')
   }
 
@@ -72,6 +88,7 @@ export function PromptModal({
           className="rounded-md border px-2.5 py-1.5 text-sm outline-none"
           style={{ borderColor: 'var(--border)', background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}
         />
+        {folders && <FolderPicker folders={folders} value={parentId} onChange={setParentId} />}
         <div className="flex justify-end gap-2">
           <button
             type="button"

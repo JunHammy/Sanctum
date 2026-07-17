@@ -121,14 +121,14 @@ function getVaultRootId(): string {
   return rootFolderId
 }
 
-export function createNote(name: string, content: string): Promise<DriveFile> {
+export function createNote(name: string, content: string, parentId?: string): Promise<DriveFile> {
   assertOnline()
-  return withAuth((token) => driveApi.createFile(token, getVaultRootId(), name, content))
+  return withAuth((token) => driveApi.createFile(token, parentId ?? getVaultRootId(), name, content))
 }
 
-export function createFolder(name: string): Promise<DriveFile> {
+export function createFolder(name: string, parentId?: string): Promise<DriveFile> {
   assertOnline()
-  return withAuth((token) => driveApi.createFolder(token, name, getVaultRootId()))
+  return withAuth((token) => driveApi.createFolder(token, name, parentId ?? getVaultRootId()))
 }
 
 export function findOrCreateAssetsFolder(): Promise<DriveFile> {

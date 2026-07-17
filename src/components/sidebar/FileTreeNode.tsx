@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ChevronRight, FileText, MoreHorizontal, Pencil, Star, Trash2 } from 'lucide-react'
+import { ChevronRight, FilePlus, FileText, FolderPlus, MoreHorizontal, Pencil, Star, Trash2 } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useUIStore } from '../../stores/ui.store'
 import { useVaultStore } from '../../stores/vault.store'
@@ -36,6 +36,10 @@ export function FileTreeNode({ node, depth, parentId }: { node: FileTreeNodeType
   const [dragOverMode, setDragOverMode] = useState<'into' | 'before' | 'after' | null>(null)
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [renameOpen, setRenameOpen] = useState(false)
+  // Folder rows only — "Add note"/"Add folder" straight into this folder,
+  // no destination picker needed since the destination is just this row.
+  const [addNoteOpen, setAddNoteOpen] = useState(false)
+  const [addFolderOpen, setAddFolderOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   // Viewport-relative coordinates, computed once at the moment the menu
   // opens — needed because the menu itself is portaled to document.body
@@ -53,6 +57,8 @@ export function FileTreeNode({ node, depth, parentId }: { node: FileTreeNodeType
   const toggleStarred = useVaultStore((s) => s.toggleStarred)
   const deleteNode = useVaultStore((s) => s.deleteNode)
   const fileTree = useVaultStore((s) => s.fileTree)
+  const createNote = useVaultStore((s) => s.createNote)
+  const createFolder = useVaultStore((s) => s.createFolder)
   const closeTabs = useTabsStore((s) => s.closeTabs)
   const showToast = useToastStore((s) => s.show)
   const isTouch = useIsTouchDevice()
@@ -146,10 +152,37 @@ export function FileTreeNode({ node, depth, parentId }: { node: FileTreeNodeType
     }
   }
 
+  // Folder rows only — creates directly inside this folder (node.id as
+  // parentId), no destination picker needed since the destination is fixed
+  // to wherever this menu was opened from.
+  async function handleAddNote(name: string) {
+    setAddNoteOpen(false)
+    try {
+      await createNote(name, node.id)
+      showToast(`Created "${name}"`, 'success')
+    } catch (err) {
+      logError('filetree.createNote', err)
+      showToast(toUserMessage(err, 'Could not create the note.'), 'error')
+    }
+  }
+
+  async function handleAddFolder(name: string) {
+    setAddFolderOpen(false)
+    try {
+      await createFolder(name, node.id)
+      showToast(`Created folder "${name}"`, 'success')
+    } catch (err) {
+      logError('filetree.createFolder', err)
+      showToast(toUserMessage(err, 'Could not create the folder.'), 'error')
+    }
+  }
+
   // Rough, generous estimates — good enough to decide "does this fit
-  // below," not meant to be pixel-exact.
+  // below," not meant to be pixel-exact. Folders get two extra rows (Add
+  // note/Add folder) above Rename/Delete, so their menu needs more height
+  // budgeted before the "open upward instead" decision is made.
   const MENU_WIDTH = 144
-  const MENU_HEIGHT_ESTIMATE = 90
+  const MENU_HEIGHT_ESTIMATE = node.type === 'folder' ? 170 : 90
 
   const actionsMenu = (
     <div className="relative shrink-0" ref={menuRef}>
@@ -206,6 +239,33 @@ export function FileTreeNode({ node, depth, parentId }: { node: FileTreeNodeType
                 transition={{ duration: 0.12 }}
                 onClick={(e) => e.stopPropagation()}
               >
+                {node.type === 'folder' && (
+                  <>
+                    <button
+                      type="button"
+                      className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-[var(--bg-tertiary)]"
+                      onClick={() => {
+                        setMenuOpen(false)
+                        setAddNoteOpen(true)
+                      }}
+                    >
+                      <FilePlus size={13} style={{ color: 'var(--text-muted)' }} />
+                      <span style={{ color: 'var(--text-primary)' }}>Add note</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-[var(--bg-tertiary)]"
+                      onClick={() => {
+                        setMenuOpen(false)
+                        setAddFolderOpen(true)
+                      }}
+                    >
+                      <FolderPlus size={13} style={{ color: 'var(--text-muted)' }} />
+                      <span style={{ color: 'var(--text-primary)' }}>Add folder</span>
+                    </button>
+                    <div className="my-1 h-px" style={{ background: 'var(--border)' }} aria-hidden="true" />
+                  </>
+                )}
                 <button
                   type="button"
                   className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-[var(--bg-tertiary)]"
@@ -245,6 +305,24 @@ export function FileTreeNode({ node, depth, parentId }: { node: FileTreeNodeType
         }}
         onClose={() => setRenameOpen(false)}
       />
+      {node.type === 'folder' && (
+        <>
+          <PromptModal
+            isOpen={addNoteOpen}
+            title={`New note in "${displayName}"`}
+            placeholder="Note title"
+            onSubmit={handleAddNote}
+            onClose={() => setAddNoteOpen(false)}
+          />
+          <PromptModal
+            isOpen={addFolderOpen}
+            title={`New folder in "${displayName}"`}
+            placeholder="Folder name"
+            onSubmit={handleAddFolder}
+            onClose={() => setAddFolderOpen(false)}
+          />
+        </>
+      )}
       <ConfirmModal
         isOpen={confirmOpen}
         title={node.type === 'folder' ? 'Delete folder' : isPdf ? 'Delete PDF' : 'Delete note'}

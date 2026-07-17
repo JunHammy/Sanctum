@@ -35,7 +35,7 @@ import { useVaultStore } from '../../stores/vault.store'
 import { useToastStore } from '../../stores/toast.store'
 import { useNetworkStore } from '../../stores/network.store'
 import { toUserMessage, logError } from '../../lib/error-messages'
-import { collectFolderIds } from '../../lib/vault-tree'
+import { collectFolderIds, flattenFolders } from '../../lib/vault-tree'
 import { DRAG_MIME, type DragPayload } from '../../lib/file-tree-dnd'
 import { exportVaultZip } from '../../services/backup.service'
 import { importDocx } from '../../services/docx-import.service'
@@ -303,10 +303,10 @@ export function Sidebar({ nodes, isLoading, error, onRefresh }: SidebarProps) {
       })
   }
 
-  async function handleCreateNote(name: string) {
+  async function handleCreateNote(name: string, parentId?: string) {
     setOpenModal(null)
     try {
-      await createNote(name)
+      await createNote(name, parentId)
       showToast(`Created "${name}"`, 'success')
     } catch (err) {
       logError('sidebar.createNote', err)
@@ -314,16 +314,22 @@ export function Sidebar({ nodes, isLoading, error, onRefresh }: SidebarProps) {
     }
   }
 
-  async function handleCreateFolder(name: string) {
+  async function handleCreateFolder(name: string, parentId?: string) {
     setOpenModal(null)
     try {
-      await createFolder(name)
+      await createFolder(name, parentId)
       showToast(`Created folder "${name}"`, 'success')
     } catch (err) {
       logError('sidebar.createFolder', err)
       showToast(toUserMessage(err, 'Could not create the folder.'), 'error')
     }
   }
+
+  // Also used directly by FileTreeNode's per-folder "Add note"/"Add folder"
+  // menu items (via a prop threaded down from here) — same handlers, just
+  // called with that folder's own id as parentId instead of whatever the
+  // FolderPicker in the modal above resolved to.
+  const flatFolders = useMemo(() => flattenFolders(nodes), [nodes])
 
   async function handleBackup() {
     setMoreMenuOpen(false)
@@ -585,9 +591,22 @@ export function Sidebar({ nodes, isLoading, error, onRefresh }: SidebarProps) {
                 className="absolute inset-y-0 right-0 z-10 hidden w-2 cursor-col-resize lg:block"
                 onMouseDown={handleResizeStart}
               />
-              <div className="h-full w-[calc(100%-6px)] overflow-y-auto px-2 py-3 lg:py-4">
+              {/* Split into a fixed toolbar (vault switcher + New note/New
+                  folder/Expand-all/"⋯") and a separately-scrolling content
+                  area below it — same "chrome stays put, content scrolls
+                  underneath" shape AppShell's own Header/ContentPane split
+                  already uses. Previously this toolbar lived inside the
+                  same overflow-y-auto div as the file tree, so it scrolled
+                  away with everything else on anything past a few dozen
+                  rows — not the intended "always-visible navbar" role it
+                  was actually playing. */}
+              <div className="flex h-full w-[calc(100%-6px)] flex-col">
               <div
-                className="mb-2 flex items-center justify-between gap-1 rounded px-2"
+                className="shrink-0 border-b px-2 pt-3 pb-2 lg:pt-4"
+                style={{ borderColor: 'var(--border)' }}
+              >
+              <div
+                className="flex items-center justify-between gap-1 rounded px-2"
                 style={{ background: isRootDropTarget ? 'var(--bg-tertiary)' : undefined }}
                 onDragOver={(e) => {
                   if (!e.dataTransfer.types.includes(DRAG_MIME)) return
@@ -809,6 +828,8 @@ export function Sidebar({ nodes, isLoading, error, onRefresh }: SidebarProps) {
                   />
                 </div>
               </div>
+              </div>
+              <div className="min-h-0 flex-1 overflow-y-auto px-2 pt-3 pb-3 lg:pb-4">
               {isLoading && (
                 <div className="px-2">
                   <LoadingSpinner label="Loading vault…" size={16} />
@@ -826,6 +847,7 @@ export function Sidebar({ nodes, isLoading, error, onRefresh }: SidebarProps) {
                 </>
               )}
               </div>
+              </div>
             </motion.aside>
           </>
         )}
@@ -837,6 +859,7 @@ export function Sidebar({ nodes, isLoading, error, onRefresh }: SidebarProps) {
         placeholder="Note title"
         onSubmit={handleCreateNote}
         onClose={() => setOpenModal(null)}
+        folders={flatFolders}
       />
       <PromptModal
         isOpen={openModal === 'folder'}
@@ -844,6 +867,7 @@ export function Sidebar({ nodes, isLoading, error, onRefresh }: SidebarProps) {
         placeholder="Folder name"
         onSubmit={handleCreateFolder}
         onClose={() => setOpenModal(null)}
+        folders={flatFolders}
       />
       <WebClipModal isOpen={webClipOpen} onClose={() => setWebClipOpen(false)} />
       <ImportModal isOpen={importModalOpen} onClose={() => setImportModalOpen(false)} options={importOptions} />

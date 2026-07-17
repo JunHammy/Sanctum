@@ -84,6 +84,33 @@ export function findPathToNode(nodes: FileTreeNode[], id: string): FileTreeFolde
   return walk(nodes) ?? []
 }
 
+export interface FlatFolder {
+  id: string
+  name: string
+  // Full breadcrumb path including this folder's own name, e.g.
+  // "Projects / 2024 / Notes" — disambiguates same-named folders living in
+  // different branches when picking a destination (FolderPicker.tsx).
+  path: string
+}
+
+// Every folder in the tree, flattened, each carrying its own full
+// breadcrumb path — used by FolderPicker.tsx to fuzzy-match/list every
+// possible destination for "New note"/"New folder" in one flat list rather
+// than requiring the user to actually navigate the tree first. Builds the
+// path in one pass (carrying the accumulated prefix down through the
+// recursion) rather than calling findPathToNode per folder, which would be
+// needlessly quadratic for a deep vault.
+export function flattenFolders(nodes: FileTreeNode[], prefix = ''): FlatFolder[] {
+  const result: FlatFolder[] = []
+  for (const node of nodes) {
+    if (node.type !== 'folder') continue
+    const path = prefix ? `${prefix} / ${node.name}` : node.name
+    result.push({ id: node.id, name: node.name, path })
+    result.push(...flattenFolders(node.children, path))
+  }
+  return result
+}
+
 // True if `descendantId` sits anywhere inside `ancestorId`'s own subtree —
 // used to block a folder being dragged into itself or one of its own
 // children, which would otherwise silently build an unreachable, self-
