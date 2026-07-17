@@ -201,17 +201,67 @@ export const useAuthStore = create<AuthState>()(
         // Runs even when there's nothing in localStorage yet (never signed
         // in on this device/browser) — hasHydrated still needs to flip so
         // AuthGate isn't stuck waiting forever in that case.
-        if (state) {
-          if (state.tokenExpiresAt && state.tokenExpiresAt < Date.now()) {
+        if (!state) {
+          queueMicrotask(() => useAuthStore.setState({ hasHydrated: true }))
+          return
+        }
+
+        if (state.tokenExpiresAt && state.tokenExpiresAt < Date.now()) {
+          // Confirmed real bug via testing ("still have to relog in after
+          // shutting down my device"): the *access* token is short-lived
+          // (~1hr), so it's expired almost every time the app reopens after
+          // any real time away — but that used to wipe the *refresh* token
+          // too and force a full interactive sign-in, even though the
+          // refresh token is typically still good for days (up to Google's
+          // 7-day cap for this unverified app). Attempt a silent refresh
+          // with it first instead, same call scheduleRefresh's own timer
+          // already uses — only actually clear the session if there's no
+          // refresh token to try, or the attempt itself fails outright.
+          if (!state.refreshToken) {
             state.token = null
             state.refreshToken = null
             state.user = null
             state.tokenExpiresAt = null
             state.isAuthenticated = false
-          } else {
-            state.scheduleRefresh()
+            queueMicrotask(() => useAuthStore.setState({ hasHydrated: true }))
+            return
           }
+          const refreshToken = state.refreshToken
+          // hasHydrated deliberately doesn't flip until this resolves —
+          // AuthGate holds the app on its loading state for that brief
+          // window rather than letting it through with a token already
+          // known to be stale, which would risk an immediate 401 from the
+          // first Drive call.
+          queueMicrotask(async () => {
+            try {
+              const { accessToken, expiresIn } = await authService.refreshAccessToken(refreshToken)
+              useAuthStore.setState({ token: accessToken, tokenExpiresAt: Date.now() + expiresIn * 1000 })
+              useAuthStore.getState().scheduleRefresh()
+            } catch (err) {
+              logError('auth.rehydrateRefresh', err)
+              // Same reasoning as scheduleRefresh's own offline handling:
+              // a failure only because the network isn't up yet (e.g. right
+              // after boot, before Wi-Fi reconnects) isn't a real auth
+              // problem — leave the session in place, already-cached
+              // content still works, and useNetworkStatus's reconnect hook
+              // retries this exact refresh once connectivity returns.
+              if (!isOfflineError(err)) {
+                useAuthStore.setState({
+                  token: null,
+                  refreshToken: null,
+                  user: null,
+                  tokenExpiresAt: null,
+                  isAuthenticated: false,
+                })
+              }
+            } finally {
+              useAuthStore.setState({ hasHydrated: true })
+            }
+          })
+          return
         }
+
+        state.scheduleRefresh()
         // Deferred to a microtask, not called directly: for a synchronous
         // storage engine like localStorage, this callback can fire
         // synchronously *during* the create() call below — at that exact

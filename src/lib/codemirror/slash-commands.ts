@@ -33,8 +33,16 @@ const SNIPPETS: Snippet[] = [
   // code-block snippet.
   { label: 'Python', detail: 'runnable code', snippet: '```python\n\n```', cursorOffset: 10 },
   { label: 'JavaScript', detail: 'runnable code', snippet: '```javascript\n\n```', cursorOffset: 14 },
+  // Same fence-and-place-cursor-inside shape as Code block/Python/
+  // JavaScript above — these three fence languages render as live
+  // diagrams/charts (plugin-chart.ts) rather than plain code the moment
+  // they're viewed, same as Python/JavaScript get a Run button.
+  { label: 'Mermaid', detail: 'diagram', snippet: '```mermaid\n\n```', cursorOffset: 11 },
+  { label: 'Chart', detail: 'chart.js', snippet: '```chartjs\n\n```', cursorOffset: 11 },
+  { label: 'Plotly', detail: 'plot', snippet: '```plotly\n\n```', cursorOffset: 10 },
   { label: 'Heading', detail: '##', snippet: '## ', cursorOffset: 3 },
   { label: 'Bullet list', detail: '-', snippet: '- ', cursorOffset: 2 },
+  { label: 'Numbered list', detail: '1.', snippet: '1. ', cursorOffset: 3 },
   { label: 'Task list', detail: '- [ ]', snippet: '- [ ] ', cursorOffset: 6 },
   // Inserting just the opening brackets (not a full [[Note]] template) is
   // deliberate — wikilink-autocomplete.ts's own ViewPlugin independently
@@ -43,6 +51,10 @@ const SNIPPETS: Snippet[] = [
   // dropdown immediately, same as if they'd been typed by hand.
   { label: 'Link', detail: '[[Note]]', snippet: '[[', cursorOffset: 2 },
   { label: 'Embed note', detail: '![[Note]]', snippet: '![[', cursorOffset: 3 },
+  // Cursor lands inside the parens, not the brackets — filling in the
+  // filename is the part actually worth typing next; alt text is optional
+  // and rarely used in practice.
+  { label: 'Image', detail: '![alt](file)', snippet: '![]()', cursorOffset: 4 },
 ]
 
 // Trigger only at the very start of a line, or right after whitespace —
