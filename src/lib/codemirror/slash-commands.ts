@@ -1,4 +1,6 @@
 import { EditorView, ViewPlugin, type ViewUpdate } from '@codemirror/view'
+import { createDefaultChartSpec, serializeChartSpec } from '../chart-syntax'
+import { createDefaultFlowchartSpec, serializeFlowchartSpec } from '../mermaid-syntax'
 
 interface Snippet {
   label: string
@@ -33,13 +35,32 @@ const SNIPPETS: Snippet[] = [
   // code-block snippet.
   { label: 'Python', detail: 'runnable code', snippet: '```python\n\n```', cursorOffset: 10 },
   { label: 'JavaScript', detail: 'runnable code', snippet: '```javascript\n\n```', cursorOffset: 14 },
-  // Same fence-and-place-cursor-inside shape as Code block/Python/
-  // JavaScript above — these three fence languages render as live
-  // diagrams/charts (plugin-chart.ts) rather than plain code the moment
-  // they're viewed, same as Python/JavaScript get a Run button.
-  { label: 'Mermaid', detail: 'diagram', snippet: '```mermaid\n\n```', cursorOffset: 11 },
-  { label: 'Chart', detail: 'chart.js', snippet: '```chartjs\n\n```', cursorOffset: 11 },
-  { label: 'Plotly', detail: 'plot', snippet: '```plotly\n\n```', cursorOffset: 10 },
+  // Unlike Code block/Python/JavaScript above, these three insert real
+  // starter content (a small example flowchart/chart), not an empty fence
+  // — the moment it lands, Block.tsx's dynamic classification
+  // (parseFlowchartBlock/parseChartBlock) picks it up and swaps in the
+  // matching visual editor (MermaidBlockEditor/ChartBlockEditor), same as
+  // /table and /math do. cursorOffset just lands at the end — once the
+  // visual editor takes over, the underlying raw-text cursor position
+  // doesn't matter.
+  {
+    label: 'Mermaid',
+    detail: 'flowchart',
+    snippet: serializeFlowchartSpec(createDefaultFlowchartSpec()),
+    cursorOffset: serializeFlowchartSpec(createDefaultFlowchartSpec()).length,
+  },
+  {
+    label: 'Chart',
+    detail: 'chart.js',
+    snippet: serializeChartSpec(createDefaultChartSpec('chartjs')),
+    cursorOffset: serializeChartSpec(createDefaultChartSpec('chartjs')).length,
+  },
+  {
+    label: 'Plotly',
+    detail: 'plot',
+    snippet: serializeChartSpec(createDefaultChartSpec('plotly')),
+    cursorOffset: serializeChartSpec(createDefaultChartSpec('plotly')).length,
+  },
   { label: 'Heading', detail: '##', snippet: '## ', cursorOffset: 3 },
   { label: 'Bullet list', detail: '-', snippet: '- ', cursorOffset: 2 },
   { label: 'Numbered list', detail: '1.', snippet: '1. ', cursorOffset: 3 },

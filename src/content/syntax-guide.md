@@ -282,7 +282,9 @@ The `#Heading1..#Heading2` form embeds everything from the first heading through
 
 ## Diagrams and charts
 
-Fenced code blocks with the right language render as live diagrams instead of plain code. Unlike `python`/`javascript` fences, these don't support `^block-id` tagging or single-cell embedding — leave that off a `mermaid`/`plotly`/`chartjs` fence's opening line, it won't do anything useful there.
+Type `/chart`, `/plotly`, or `/mermaid` in Edit mode for a visual editor instead of hand-writing JSON or diagram syntax — a chart type picker (bar/line/pie) plus a label/value data grid for charts, or a node list + connection list for a flowchart, both with a live preview as you edit. This covers the common single-series chart / simple flowchart case; anything more elaborate (multiple data series, a non-flowchart diagram type, custom styling) automatically falls back to the raw fence below instead of the grid — use the Code icon to switch to raw editing directly whenever you want to hand-write something the visual editor can't represent.
+
+Fenced code blocks with the right language render as live diagrams instead of plain code — this is what both the visual editors above and hand-written fences ultimately produce. Unlike `python`/`javascript` fences, these don't support `^block-id` tagging or single-cell embedding — leave that off a `mermaid`/`plotly`/`chartjs` fence's opening line, it won't do anything useful there.
 
 ````markdown
 ```mermaid

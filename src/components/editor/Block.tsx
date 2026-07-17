@@ -1,5 +1,5 @@
 import { memo, useEffect, useRef, useState, type DragEvent, type MouseEvent } from 'react'
-import { ChevronUp, ChevronDown, GripVertical, Plus, Trash2, Table2, Code, Maximize2, Sigma } from 'lucide-react'
+import { ChevronUp, ChevronDown, GripVertical, Plus, Trash2, Table2, Code, Maximize2, Sigma, BarChart3, Workflow } from 'lucide-react'
 import { useVaultStore } from '../../stores/vault.store'
 import { useToastStore } from '../../stores/toast.store'
 import { resolveWikilink } from '../../lib/wikilink-resolver'
@@ -14,6 +14,8 @@ import { useNoteStore } from '../../stores/note.store'
 import { renderBody } from '../../services/markdown.service'
 import { parseTable } from '../../lib/table-syntax'
 import { parseMathBlock } from '../../lib/math-syntax'
+import { parseChartBlock } from '../../lib/chart-syntax'
+import { parseFlowchartBlock } from '../../lib/mermaid-syntax'
 import { parsePythonBlock, parsePythonBlockId, parsePersistedOutput, serializePythonBlock } from '../../lib/python/python-syntax'
 import {
   parseJavaScriptBlock,
@@ -24,6 +26,8 @@ import {
 import { MarkdownEditor } from './MarkdownEditor'
 import { TableGridEditor } from './TableGridEditor'
 import { MathBlockEditor } from './MathBlockEditor'
+import { ChartBlockEditor } from './ChartBlockEditor'
+import { MermaidBlockEditor } from './MermaidBlockEditor'
 import { CodeBlock, type PersistedCodeOutput } from './CodeBlock'
 import { Modal } from '../common/Modal'
 import type { Block as BlockType } from '../../lib/blocks/split-blocks'
@@ -146,6 +150,21 @@ export const Block = memo(function Block({
   // "not a math block."
   const parsedMath = parseMathBlock(block.rawText)
   const isMath = !forceRawMode && parsedMath !== null
+  // Same dynamic classification once more, for a ```chartjs/```plotly fence
+  // whose JSON matches the narrow single-series bar/line/pie shape
+  // chart-syntax.ts recognizes — anything more complex (multi-series,
+  // custom options, an unrecognized trace shape) returns null here and
+  // falls through to the plain text editor below, same as an unrecognized
+  // table/math shape would. Ungated by forceRawMode (same as parsedTable
+  // above, unlike isMath) — the toggle button's own icon needs to know
+  // this is a chart even while showing raw text, same reason parsedTable
+  // stays ungated.
+  const parsedChart = parseChartBlock(block.rawText)
+  const chart = forceRawMode ? null : parsedChart
+  // Same ungated/gated split once more, for a ```mermaid fence matching the
+  // narrow flowchart shape mermaid-syntax.ts recognizes.
+  const parsedFlowchart = parseFlowchartBlock(block.rawText)
+  const flowchart = forceRawMode ? null : parsedFlowchart
   // Unlike table/math, python/javascript never swap out the text editor —
   // the code itself is still genuinely worth hand-editing as raw text.
   // This just decides whether to *also* show a live Run button + output
@@ -332,6 +351,10 @@ export const Block = memo(function Block({
               />
             ) : isMath ? (
               <MathBlockEditor id={block.id} value={block.rawText} onChange={onChange} />
+            ) : chart ? (
+              <ChartBlockEditor id={block.id} value={block.rawText} onChange={onChange} />
+            ) : flowchart ? (
+              <MermaidBlockEditor id={block.id} value={block.rawText} onChange={onChange} />
             ) : parsedPython !== null ? (
               // One shared bordered box for the whole "cell" (code + Run/
               // output), not two stacked boxes — see CodeBlock's own
@@ -395,7 +418,7 @@ export const Block = memo(function Block({
             ) : (
               <MarkdownEditor value={block.rawText} onChange={(text) => onChange(block.id, text)} />
             )}
-            {(parsedTable || parsedMath !== null) && (
+            {(parsedTable || parsedMath !== null || parsedChart || parsedFlowchart) && (
               <div className="absolute top-2 right-2 flex gap-1.5">
                 {((table && isOverflowing) || isMath) && (
                   <button
@@ -419,7 +442,15 @@ export const Block = memo(function Block({
                     onClick={() => setForceRawMode((v) => !v)}
                   >
                     {forceRawMode ? (
-                      parsedTable ? <Table2 size={14} /> : <Sigma size={14} />
+                      parsedTable ? (
+                        <Table2 size={14} />
+                      ) : parsedChart ? (
+                        <BarChart3 size={14} />
+                      ) : parsedFlowchart ? (
+                        <Workflow size={14} />
+                      ) : (
+                        <Sigma size={14} />
+                      )
                     ) : (
                       <Code size={14} />
                     )}
