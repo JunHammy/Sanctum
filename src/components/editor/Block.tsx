@@ -95,7 +95,16 @@ export const Block = memo(function Block({
   const showToast = useToastStore((s) => s.show)
   const isTouch = useIsTouchDevice()
   const containerRef = useRef<HTMLDivElement>(null)
-  const html = block.rawText.trim() ? renderBody(block.rawText) : EMPTY_PLACEHOLDER
+  // Only actually needed by the *inactive* preview branch below (every
+  // dangerouslySetInnerHTML site is there, none in the active branch) — but
+  // this used to run unconditionally, re-parsing the block's full markdown
+  // through renderBody() on every keystroke even while actively editing it,
+  // wasted work an active block never uses. Confirmed as a real contributor
+  // to a mobile crash via testing, compounding with ChartBlockEditor/
+  // MermaidBlockEditor's own heavy live-preview re-renders on every
+  // keystroke (see their own debouncedSpec fix) — skipping this here is a
+  // straightforward win with no downside, not a tradeoff.
+  const html = !isActive && block.rawText.trim() ? renderBody(block.rawText) : EMPTY_PLACEHOLDER
 
   useImageResolution(containerRef, fileTree, isVaultLoading)
   useTransclusion(containerRef, fileTree)

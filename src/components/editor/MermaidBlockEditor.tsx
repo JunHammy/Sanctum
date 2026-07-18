@@ -9,6 +9,7 @@ import {
   type FlowchartNode,
   type FlowchartEdge,
 } from '../../lib/mermaid-syntax'
+import { useDebouncedValue } from '../../hooks/useDebouncedValue'
 
 interface MermaidBlockEditorProps {
   id: string
@@ -59,7 +60,12 @@ function useMermaidPreview(containerRef: RefObject<HTMLDivElement | null>, spec:
 export function MermaidBlockEditor({ id, value, onChange }: MermaidBlockEditorProps) {
   const [spec, setSpec] = useState<SimpleFlowchartSpec>(() => parseFlowchartBlock(value) ?? { nodes: [], edges: [] })
   const previewRef = useRef<HTMLDivElement>(null)
-  useMermaidPreview(previewRef, spec)
+  // Same fix as ChartBlockEditor's own debouncedSpec — confirmed real crash
+  // on mobile via testing: Mermaid's layout engine (dagre) is genuine,
+  // non-trivial work, re-triggered on every keystroke without this. The
+  // node/edge list itself still reflects `spec` instantly.
+  const debouncedSpec = useDebouncedValue(spec, 400)
+  useMermaidPreview(previewRef, debouncedSpec)
 
   function update(next: SimpleFlowchartSpec) {
     setSpec(next)

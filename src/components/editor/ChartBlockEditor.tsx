@@ -7,6 +7,7 @@ import {
   type ChartType,
   type ChartRow,
 } from '../../lib/chart-syntax'
+import { useDebouncedValue } from '../../hooks/useDebouncedValue'
 
 interface ChartBlockEditorProps {
   id: string
@@ -124,7 +125,15 @@ function useLivePreview(containerRef: RefObject<HTMLDivElement | null>, spec: Si
 export function ChartBlockEditor({ id, value, onChange }: ChartBlockEditorProps) {
   const [spec, setSpec] = useState<SimpleChartSpec>(() => parseChartBlock(value) ?? { engine: 'chartjs', chartType: 'bar', title: '', rows: [] })
   const previewRef = useRef<HTMLDivElement>(null)
-  useLivePreview(previewRef, spec)
+  // Confirmed real crash on mobile via testing: without this, every single
+  // keystroke in the title/label/value inputs re-imported and re-rendered
+  // the full chart library (Chart.js or Plotly, both genuinely heavy work,
+  // not a cheap re-paint) — fine on a fast desktop, but enough synchronous
+  // work per keystroke to make a phone's browser tab unresponsive. The data
+  // grid itself still reflects `spec` instantly; only the expensive chart
+  // re-render is delayed.
+  const debouncedSpec = useDebouncedValue(spec, 400)
+  useLivePreview(previewRef, debouncedSpec)
 
   function update(next: SimpleChartSpec) {
     setSpec(next)
